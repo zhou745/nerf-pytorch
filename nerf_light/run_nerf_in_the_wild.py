@@ -455,6 +455,8 @@ def config_parser(default_conf="configs/lego.txt"):
     parser = configargparse.ArgumentParser()
     parser.add_argument('--config', is_config_file=True, default=default_conf,
                         help='config file path')
+    parser.add_argument('--num_epoch', type = int, default=400,
+                                    help='training time')
     parser.add_argument("--expname", type=str,
                         help='experiment name')
     parser.add_argument("--basedir", type=str, default='./logs/',
@@ -571,11 +573,13 @@ def config_parser(default_conf="configs/lego.txt"):
 def train():
     # default_conf = "configs/fern.txt"
     # default_conf = "configs/kubric_shoe.txt"
-    default_conf = "configs/light_shoes.txt"
-    num_epoch = 400  # zhoujq modified
+    # default_conf = "configs/light_shoes.txt"
+    default_conf = "configs/single_shoes.txt"
     parser = config_parser(default_conf=default_conf)
+    
     args = parser.parse_args()
-
+    num_epoch = args.num_epoch
+    print(f"training for {args.num_epoch} epochs")
     # Load data
     K = None
     #currently only synthetic data is considered

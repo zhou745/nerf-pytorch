@@ -1,0 +1,26 @@
+expname = single_shoes
+basedir = ./logs
+datadir = ../data/nerf_synthetic/kubric_shoe_4
+dataset_type = blender_light
+
+batch_size = 2
+# white_bkgd = True
+lrate_decay = 500
+
+N_samples = 64
+N_importance = 128
+N_rand = 1024
+
+precrop_epoch = 1
+precrop_frac = 0.5
+
+half_res = True
+# render_debug = True
+near = 2
+far = 6
+
+light_cond = 1
+num_epoch = 40000
+save_weights_freq_epoch = 100
+save_testset_freq_epoch = 1000
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/logs/kubric_shoe_long/750000.tar"
