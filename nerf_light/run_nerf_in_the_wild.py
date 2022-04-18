@@ -585,15 +585,18 @@ def train():
         #image name list is loaded, instead of the image itself
         dataset_train = Nerf_blender_light_dataset(args.datadir,
                                                     args.half_res,
-                                                    split='train')
+                                                    split='train',
+                                                    light_cond_dim = args.light_cond)
 
         dataset_val = Nerf_blender_light_dataset(args.datadir,
                                                     args.half_res,
-                                                    split='val')
+                                                    split='val',
+                                                    light_cond_dim = args.light_cond)
 
         dataset_test = Nerf_blender_light_dataset(args.datadir,
                                                     args.half_res,
-                                                    split='test')
+                                                    split='test',
+                                                    light_cond_dim = args.light_cond)
 
         print('Loaded blender dataset')
 

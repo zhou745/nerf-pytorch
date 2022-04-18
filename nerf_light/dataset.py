@@ -24,7 +24,10 @@ class Nerf_blender_light_dataset(Dataset):
             fname = os.path.join(basedir, frame['file_path'] + '.png')
             self.imgs_name.append(fname)
             self.poses.append(np.array(frame['transform_matrix']).astype(np.float32))
-            self.light_cond.append(np.array(frame['light_cond']).astype(np.long))
+            try:
+                self.light_cond.append(np.array(frame['light_cond']).astype(np.long))
+            except:
+                self.light_cond.append(np.array(0).astype(np.long))
 
         imgs_tmp = np.array(imageio.imread(fname))
         H, W = imgs_tmp.shape[:2]
