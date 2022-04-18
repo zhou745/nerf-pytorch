@@ -7,3 +7,5 @@
 *.dae
 data/*
 logs/*
+nerf_light/logs/*
+.idea/*

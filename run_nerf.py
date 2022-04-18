@@ -418,11 +418,11 @@ def render_rays(ray_batch,
     return ret
 
 
-def config_parser():
+def config_parser(default_conf = "configs/lego.txt"):
 
     import configargparse
     parser = configargparse.ArgumentParser()
-    parser.add_argument('--config', is_config_file=True, 
+    parser.add_argument('--config', is_config_file=True, default=default_conf,
                         help='config file path')
     parser.add_argument("--expname", type=str, 
                         help='experiment name')
@@ -493,6 +493,10 @@ def config_parser():
                         help='options: llff / blender / deepvoxels')
     parser.add_argument("--testskip", type=int, default=8, 
                         help='will load 1/N images from test/val sets, useful for large datasets like deepvoxels')
+    parser.add_argument("--near", type=float, default=2,
+                        help='near point to camera')
+    parser.add_argument("--far", type=float, default=6,
+                        help='far point to camera')
 
     ## deepvoxels flags
     parser.add_argument("--shape", type=str, default='greek', 
@@ -521,19 +525,21 @@ def config_parser():
                         help='frequency of console printout and metric loggin')
     parser.add_argument("--i_img",     type=int, default=500, 
                         help='frequency of tensorboard image logging')
-    parser.add_argument("--i_weights", type=int, default=10000, 
+    parser.add_argument("--i_weights", type=int, default=50000,
                         help='frequency of weight ckpt saving')
-    parser.add_argument("--i_testset", type=int, default=50000, 
+    parser.add_argument("--i_testset", type=int, default=50000,
                         help='frequency of testset saving')
-    parser.add_argument("--i_video",   type=int, default=50000, 
+    parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
 
     return parser
 
 
 def train():
-
-    parser = config_parser()
+    # default_conf = "configs/fern.txt"
+    default_conf = "configs/kubric_shoe.txt"
+    N_iters = 1000000 + 1      #zhoujq modified
+    parser = config_parser(default_conf = default_conf)
     args = parser.parse_args()
 
     # Load data
@@ -571,8 +577,8 @@ def train():
         print('Loaded blender', images.shape, render_poses.shape, hwf, args.datadir)
         i_train, i_val, i_test = i_split
 
-        near = 2.
-        far = 6.
+        near = args.near
+        far = args.far
 
         if args.white_bkgd:
             images = images[...,:3]*images[...,-1:] + (1.-images[...,-1:])
@@ -698,7 +704,7 @@ def train():
         rays_rgb = torch.Tensor(rays_rgb).to(device)
 
 
-    N_iters = 200000 + 1
+
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
