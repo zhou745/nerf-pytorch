@@ -19,15 +19,27 @@ class Nerf_blender_light_dataset(Dataset):
         self.imgs_name = []
         self.light_cond = []
         self.poses = []
+        self.ref_imgs = []
 
         for frame in meta['frames']:
             fname = os.path.join(basedir, frame['file_path'] + '.png')
             self.imgs_name.append(fname)
             self.poses.append(np.array(frame['transform_matrix']).astype(np.float32))
-            try:
-                self.light_cond.append(np.array(frame['light_cond']).astype(np.long))
-            except:
-                self.light_cond.append(np.array(0).astype(np.long))
+
+            if "light_cond" in frame.keys():
+                if isinstance(frame['light_cond'],int):
+                    self.light_cond.append(np.array([frame['light_cond']]).astype(np.long))
+                elif isinstance(frame['light_cond'],list):
+                    self.light_cond.append(np.array(frame['light_cond']).astype(np.long))
+                else:
+                    raise RuntimeError('unknown light cond type')
+            else:
+                self.light_cond.append(np.array(-1).astype(np.long))
+
+            if "ref_img" in frame.keys():
+                self.ref_imgs.append(np.array(frame['ref_img']).astype(np.long))
+            else:
+                self.ref_imgs.append([])
 
         imgs_tmp = np.array(imageio.imread(fname))
         H, W = imgs_tmp.shape[:2]
@@ -53,10 +65,20 @@ class Nerf_blender_light_dataset(Dataset):
         if self.half_res:
            img = cv2.resize(img, (self.W, self.H), interpolation=cv2.INTER_AREA)
         light_cond_tensor = torch.zeros((self.light_cond_dim),dtype=torch.float32)
-        light_cond_tensor[self.light_cond[idx]] = 1.
+        for l_idx in self.light_cond[idx]:
+            if l_idx>=0:
+                light_cond_tensor[l_idx] = 1.
+
+        if len(self.ref_imgs[idx])>0:
+            ref_idx = self.ref_imgs[idx][np.random.randint(0,len(self.ref_imgs[idx]))]
+            img_ref = (np.array(imageio.imread(self.imgs_name[ref_idx])) / 255.).astype(np.float32)
+        else:
+            img_ref = np.zeros(img.shape).astype(np.float32)
+
         data_dict = {'images': torch.tensor(img),
                      'poses': torch.tensor(self.poses[idx]),
-                     'light_cond': light_cond_tensor}
+                     'light_cond': light_cond_tensor,
+                     'ref_img':img_ref}
         return(data_dict)
 
     def get_hwf(self):

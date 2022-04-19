@@ -134,7 +134,7 @@ def render_path(render_poses,light_cond, hwf, K, chunk, render_kwargs,img_idx=0,
                             [0, 0, 1]])
 
     #render the rays
-    rays_o, rays_d = get_rays(H, W, K_use, render_poses[0,:3,:3])
+    rays_o, rays_d = get_rays(H, W, K_use, render_poses[0,:3,:4])
 
     #add batch dim to the front
     rays_o = rays_o.unsqueeze(0)
@@ -573,8 +573,8 @@ def config_parser(default_conf="configs/lego.txt"):
 def train():
     # default_conf = "configs/fern.txt"
     # default_conf = "configs/kubric_shoe.txt"
-    # default_conf = "configs/light_shoes.txt"
-    default_conf = "configs/single_shoes.txt"
+    default_conf = "configs/light_shoes.txt"
+    # default_conf = "configs/single_shoes.txt"
     parser = config_parser(default_conf=default_conf)
     
     args = parser.parse_args()
@@ -683,8 +683,9 @@ def train():
 
     #debug use
     if args.render_debug:
-        save_path = "./debug"
-        render_dataset(save_path,hwf,K,args, dataset_train,render_kwargs_test, device,offset_idx=300,num_render=24)
+        save_path = "./render/light_shoes/epoch_200_test_light_0"
+        # save_path = "./render/single_shoes/epoch_6000_test"
+        render_dataset(save_path,hwf,K,args, dataset_test,render_kwargs_test, device,offset_idx=0,num_render=24)
         return
 
     # Summary writers
@@ -819,6 +820,10 @@ def render_dataset(save_dir, hwf, K, args, dataset,render_kwargs_test, device,of
             images = data_batch['images'].to(device).unsqueeze(0)
             poses = data_batch['poses'].to(device).unsqueeze(0)
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
+            # light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
+            # light_cond[0,-1] = 0.
+            # light_cond[0, 0] = 1.
+            # light_cond[0, 150] = 1.
 
             render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
                         gt_imgs=images, savedir=testsavedir, render_factor=render_factor)
