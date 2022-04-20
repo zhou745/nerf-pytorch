@@ -72,6 +72,8 @@ class Nerf_blender_light_dataset(Dataset):
         if len(self.ref_imgs[idx])>0:
             ref_idx = self.ref_imgs[idx][np.random.randint(0,len(self.ref_imgs[idx]))]
             img_ref = (np.array(imageio.imread(self.imgs_name[ref_idx])) / 255.).astype(np.float32)
+            if self.half_res:
+                img_ref = cv2.resize(img_ref, (self.W, self.H), interpolation=cv2.INTER_AREA)
         else:
             img_ref = np.zeros(img.shape).astype(np.float32)
 

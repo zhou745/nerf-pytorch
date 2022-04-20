@@ -98,3 +98,42 @@ class Nerf_color(nn.Module):
         return({
             'color': color
         })
+
+
+#attention based
+class Nerf_light(nn.Module):
+    def __init__(self,D = 4,
+                      W = 256,
+                      light_cond = 200):
+
+        super(Nerf_light, self).__init__()
+
+        self.D = D
+        self.W = W
+        self.light_cond = light_cond
+
+        self.conv_encode = nn.Conv2d(in_channels=3,out_channels=W,stride=16,kernel_size=16)
+
+        self.conv_list = nn.ModuleList(
+            [nn.Conv2d(in_channels= W, out_channels=W,kernel_size=3,stride=2) for i in range(D - 2)])
+
+        self.color_head = nn.Linear(W, self.light_cond)
+
+    def forward(self, input_dict):
+
+        ref_imgs = input_dict['ref_imgs']
+        #encode light first
+        img_features = self.conv_encode(ref_imgs)
+
+        for i, l in enumerate(self.pts_linears):
+            h = self.conv_list[i](img_features)
+            h = F.relu(h)
+            if i in self.skips:
+                h = torch.cat([input_feature, h], -1)
+
+        #predict colors
+        color = self.color_head(h)
+
+        return({
+            'color': color
+        })

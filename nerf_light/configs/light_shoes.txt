@@ -1,6 +1,7 @@
 expname = light_shoes
 basedir = ./logs
-datadir = ../data/nerf_synthetic/light_shoes
+# datadir = ../data/nerf_synthetic/light_shoes
+datadir = ../data/nerf_synthetic/light_mix_shoes
 dataset_type = blender_light
 
 batch_size = 2
