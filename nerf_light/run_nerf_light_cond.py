@@ -808,6 +808,7 @@ def train():
                 'global_step': global_step,
                 'model_density': render_kwargs_train['model_density'].state_dict(),
                 'model_color': render_kwargs_train['model_color'].state_dict(),
+                'model_light': render_kwargs_train['model_light'].state_dict(),
                 'model_density_fine': render_kwargs_train['model_density_fine'].state_dict(),
                 'model_color_fine': render_kwargs_train['model_color_fine'].state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
