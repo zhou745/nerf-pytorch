@@ -153,7 +153,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     viewdirs = rays_d_flat / rays_d_flat.norm(dim=-1, keepdim=True)
     ref_img_run = ref_img[...,:3]
     rgb, disp, acc, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
-                                    viewdirs=viewdirs, light_cond=light_cond, ref_img= ref_img, device=light_cond.device,
+                                    viewdirs=viewdirs, light_cond=light_cond, ref_img= ref_img_run, device=light_cond.device,
                                     eval_model=True,gt_light_rate=gt_light_rate, **render_kwargs)
 
     rgb_2d = rgb.reshape(H, W, -1)
