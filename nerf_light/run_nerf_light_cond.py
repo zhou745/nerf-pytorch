@@ -151,7 +151,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     rays_o_flat = rays_o.flatten(1, 2)
     rays_d_flat = rays_d.flatten(1, 2)
     viewdirs = rays_d_flat / rays_d_flat.norm(dim=-1, keepdim=True)
-
+    ref_img_run = ref_img[...,:3]
     rgb, disp, acc, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
                                     viewdirs=viewdirs, light_cond=light_cond, ref_img= ref_img, device=light_cond.device,
                                     eval_model=True,gt_light_rate=gt_light_rate, **render_kwargs)
@@ -176,7 +176,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
             filename_gt = os.path.join(savedir, '{:03d}_gt.png'.format(img_idx))
             imageio.imwrite(filename_gt, gt8)
 
-            ref_cpu = ref_img[0].permute(1,2,0).cpu().numpy()
+            ref_cpu = ref_img[0].cpu().numpy()
             ref8 = to8b(ref_cpu)
             filename_ref = os.path.join(savedir, '{:03d}_ref.png'.format(img_idx))
             imageio.imwrite(filename_ref, ref8)
@@ -827,10 +827,7 @@ def train():
                     poses = data_batch['poses'].to(device)
                     light_cond = data_batch['light_cond'].to(device)
                     ref_img = data_batch['ref_img'].to(device)
-                    if args.white_bkgd:
-                        ref_img = ref_img[..., :3] * ref_img[..., -1:] + (1. - ref_img[..., -1:])
-                    else:
-                        ref_img = ref_img[..., :3]
+
                     render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
                                 gt_imgs=images,ref_img =ref_img, savedir=testsavedir, render_factor=1.0)
                     img_idx += 1
@@ -850,10 +847,6 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
             poses = data_batch['poses'].to(device).unsqueeze(0)
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
             ref_img = data_batch['ref_img'].to(device).unsqueeze(0)
-            if args.white_bkgd:
-                ref_img = ref_img[..., :3] * ref_img[..., -1:] + (1. - ref_img[..., -1:])
-            else:
-                ref_img = ref_img[..., :3]
 
             render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
                         gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor)
