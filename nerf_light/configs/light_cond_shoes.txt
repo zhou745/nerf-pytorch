@@ -13,7 +13,7 @@ N_rand = 1024
 
 precrop_epoch = 1
 precrop_frac = 0.5
-
+gt_light_rate = 0.5
 half_res = True
 # render_debug = True
 near = 2
