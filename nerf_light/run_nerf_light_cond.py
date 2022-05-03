@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from run_nerf_in_the_wild_helpers import *
 
-from dataset import Nerf_blender_light_dataset
+from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset
 from model import Nerf_density, Nerf_color
 from torch.utils.tensorboard import SummaryWriter
 
@@ -136,10 +136,19 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
         # Render downsampled for speed
         H = int(H * render_factor)
         W = int(W * render_factor)
-        focal = focal * render_factor
-        K_use = np.array([[focal, 0, 0.5 * W],
-                          [0, focal, 0.5 * H],
-                          [0, 0, 1]])
+        if len(focal)==1:
+            focal[0] = focal[0] * render_factor
+            K_use = np.array([[focal, 0, 0.5 * W],
+                              [0, focal, 0.5 * H],
+                              [0, 0, 1]])
+        else:
+            focal[0] = focal[0] * render_factor
+            focal[1] = focal[1] * render_factor
+            focal[2] = focal[2] * render_factor
+            focal[3] = focal[3] * render_factor
+            K_use = np.array([[focal[0], 0, focal[2]],
+                              [0, focal[1], focal[3]],
+                              [0, 0, 1]])
 
     # render the rays
     rays_o, rays_d = get_rays(H, W, K_use, render_poses[0, :3, :4])
@@ -562,6 +571,8 @@ def config_parser(default_conf="configs/lego.txt"):
                         help='set to render synthetic data on a white bkgd (always use for dvoxels)')
     parser.add_argument("--half_res", action='store_true',
                         help='load blender synthetic data at 400x400 instead of 800x800')
+    parser.add_argument("--quat_res", action='store_true',
+                        help='load blender synthetic data at 400x400 instead of 800x800')
 
     ## llff flags
     parser.add_argument("--factor", type=int, default=8,
@@ -593,8 +604,9 @@ def config_parser(default_conf="configs/lego.txt"):
 def train():
     # default_conf = "configs/fern.txt"
     # default_conf = "configs/kubric_shoe.txt"
-    default_conf = "configs/light_cond_shoes.txt"
+    # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
+    default_conf = "configs/env_0.txt"
     parser = config_parser(default_conf=default_conf)
 
     args = parser.parse_args()
@@ -628,19 +640,52 @@ def train():
         near = args.near
         far = args.far
         print('NEAR FAR', near, far)
+    elif  args.dataset_type == 'real_data':
+        # image name list is loaded, instead of the image itself
+        dataset_train = Nerf_real_light_dataset(args.datadir,
+                                                   args.half_res,
+                                                   args.quat_res,
+                                                   split='train',
+                                                   light_cond_dim=args.light_cond)
+
+        dataset_val = Nerf_real_light_dataset(args.datadir,
+                                                 args.half_res,
+                                                 args.quat_res,
+                                                 split='val',
+                                                 light_cond_dim=args.light_cond)
+
+        dataset_test = Nerf_real_light_dataset(args.datadir,
+                                                  args.half_res,
+                                                  args.quat_res,
+                                                  split='test',
+                                                  light_cond_dim=args.light_cond)
+
+        print('Loaded nerf real dataset')
+
+        hwf = dataset_train.get_hwf()
+        near = args.near
+        far = args.far
+        print('NEAR FAR', near, far)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
 
     # Cast intrinsics to right types
-    H, W, focal = hwf
+    H, W = hwf[0:2]
+    focal = hwf[2:]
     H, W = int(H), int(W)
     hwf = [H, W, focal]
 
-    if K is None:
+    if K is None and len(focal) ==1:
         K = np.array([
-            [focal, 0, 0.5 * W],
-            [0, focal, 0.5 * H],
+            [focal[0], 0, 0.5 * W],
+            [0, focal[0], 0.5 * H],
+            [0, 0, 1]
+        ])
+    elif K is None and len(focal) ==4:
+        K = np.array([
+            [focal[0], 0, focal[2]],
+            [0, focal[1], focal[3]],
             [0, 0, 1]
         ])
 
@@ -701,9 +746,12 @@ def train():
 
     # debug use
     if args.render_debug:
-        save_path = "./render/light_shoes/epoch_200_test_light_mix_0"
+        # save_path = "./render/light_ref_shoes_1_cond/epoch_80_train_0_1"
+        # save_path = "./render/light_ref_shoes/epoch_80_train_ref"
+        save_path = "./render/env_0/epoch_1199"
         # save_path = "./render/single_shoes/epoch_6000_test"
-        render_dataset(save_path, hwf, K, args, dataset_train, render_kwargs_test, device, offset_idx=0, num_render=100)
+        render_dataset(save_path, hwf, K, args, dataset_train, render_kwargs_test, device,
+                       offset_idx=0,step_idx=50, num_render=16, light_cond_ratio=None,gt_light_rate=1.1)
         return
 
     # Summary writers
@@ -835,21 +883,28 @@ def train():
     writer.close()
 
 
-def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, offset_idx=300,
-                   num_render=10, render_factor=1.0):
+def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, offset_idx=0, step_idx = 1,
+                   num_render=10, render_factor=1.0, gt_light_rate = 1.1,light_cond_ratio=None):
     testsavedir = save_dir
     os.makedirs(testsavedir, exist_ok=True)
     print('test cases num ', num_render)
     with torch.no_grad():
         for img_idx in tqdm(range(num_render)):
-            data_batch = dataset[img_idx + offset_idx]
+            data_batch = dataset[img_idx*step_idx+offset_idx]
             images = data_batch['images'].to(device).unsqueeze(0)
             poses = data_batch['poses'].to(device).unsqueeze(0)
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
             ref_img = data_batch['ref_img'].to(device).unsqueeze(0)
 
+            light_idx = np.where(light_cond[0].cpu().numpy()>0.5)
+            print(light_idx,flush=True)
+            if light_cond_ratio is not None:
+                light_cond[0,light_idx[0][0]] = light_cond_ratio[0]
+                light_cond[0,light_idx[0][1]] = light_cond_ratio[1]
+
             render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
-                        gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor)
+                        gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor,
+                        gt_light_rate= gt_light_rate)
     print('Saved test set')
 
 

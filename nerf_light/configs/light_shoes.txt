@@ -19,4 +19,4 @@ half_res = True
 render_debug = True
 near = 2
 far = 6
-ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/light_shoes/000200.tar"
+ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/light_shoes/000100.tar"

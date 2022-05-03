@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import json
+import numpy as np
+
+eps = 1e-8
 
 class Nerf_density(nn.Module):
     def __init__(self, input_ch = 63,
@@ -129,7 +133,7 @@ class Nerf_light(nn.Module):
             h = self.conv_list[i](img_features)
             h = F.relu(h)
             if i in self.skips:
-                h = torch.cat([input_feature, h], -1)
+                h = torch.cat([img_features, h], -1)
 
         #predict colors
         color = self.color_head(h)
@@ -137,3 +141,79 @@ class Nerf_light(nn.Module):
         return({
             'color': color
         })
+
+#Skew matrix
+class Skew(nn.Module):
+    def __init__(self):
+        super(Skew,self).__init__()
+
+        self.mapping_matrix = torch.tensor([[[0.,0.,0.],[0.,0.,-1.],[0.,1.,0.]],
+                                            [[0.,0.,1],[0.,0.,0.],[-1.,0.,0.]],
+                                            [[0.,-1,0.],[1.,0.,0.],[0.,0.,0.]]],dtype = torch.float32)
+
+    def forward(self, X):
+        #move mapping_matrix to device
+        self.mapping_matrix.to(X.device)
+
+        A = (self.mapping_matrix[None,:,:,:]*X[:,None,None,:]).sum(dim=-1)
+        return A
+
+#nerf pose net
+class Nerf_pose(nn.Module):
+    def __init__(self, maximum_pose = 1000):
+        super(Nerf_pose, self).__init__()
+        self.maximum_pose = maximum_pose
+        #rotation axis
+        self.pose_embeding_v = nn.Embedding(maximum_pose,3)
+        #rotation angle
+        self.pose_embeding_alpha = nn.Embedding(maximum_pose,1)
+        #translation vactor
+        self.pose_embeding_T = nn.Embedding(maximum_pose,3)
+
+        self.skew = Skew()
+
+    def forward(self, image_idx):
+        #create K matrix, later use own cuda kernel
+        rotation_v = self.pose_embeding_v(image_idx)
+        #normailize to 1
+        rotation_v = rotation_v/(rotation_v.norm(dim=-1,keepdim=True)+eps)
+
+        rotation_alpha = self.pose_embeding_alpha(image_idx)
+        translation = self.pose_embeding_T(image_idx)
+
+        skew_v = self.skew(rotation_v)
+
+        rotation = torch.eye(3).to(rotation_v.device)[None,:,:]+\
+                   skew_v*(torch.sin(rotation_alpha)[:,:,None])+\
+                   torch.matmul(skew_v,skew_v)*(1-torch.cos(rotation_alpha)[:,:,None])
+
+        N, _, _ = rotation.shape
+        #create K matrix
+        K = torch.eye(4).to(rotation_v.device).unsqueeze(0).repeat(N,1,1)
+        K[:,0:3,0:3] = rotation
+        K[:,0:3,3] = translation
+        return(K)
+
+    def init_parameter(self,data_json_path):
+        #read the json file and get colmap generated pose
+        fp = open(data_json_path)
+        meta = json.load(fp)
+        fp.close()
+
+
+        rotation_T = [[0.,0.,0.] for i in range(self.maximum_pose)]
+
+        frames = meta['frames']
+        Q = [[1.,0.,0.,0.] for i in range(self.maximum_pose)]
+        for frame in frames:
+            idx = int(frame['file_path'].rstrip(".png").split("_")[-1])
+            Q[idx] = frame['Q']
+            rotation_T[idx] = frame['T']
+        Q_np = np.array(Q,dtype=np.float32)
+        rotation_T = np.array(rotation_T,dtype=np.float32)
+        rotation_alpha = 2*np.arccos(Q_np[:,0:1])
+        rotation_v = Q_np[:,1:]/(np.linalg.norm(Q_np[:,1:],ord=2,axis=-1,keepdims=True)+eps)
+
+        self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
+        self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))
+        self.pose_embeding_T.weight.data.copy_(torch.tensor(rotation_T))
