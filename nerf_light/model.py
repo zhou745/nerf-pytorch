@@ -190,8 +190,10 @@ class Nerf_pose(nn.Module):
         N, _, _ = rotation.shape
         #create K matrix
         K = torch.eye(4).to(rotation_v.device).unsqueeze(0).repeat(N,1,1)
-        K[:,0:3,0:3] = rotation
-        K[:,0:3,3] = translation
+        K[:,0:3,0:3] = torch.transpose(rotation,1,2)
+        #convert the translation
+        translation_c2w = (torch.transpose(rotation,1,2)*translation[:,None,:]).sum(dim=-1)
+        K[:,0:3,3] = translation_c2w
         return(K)
 
     def init_parameter(self,data_json_path):

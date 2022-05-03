@@ -107,12 +107,13 @@ class Nerf_real_light_dataset(Dataset):
             self.imgs_name.append(fname)
             #get quatarion
             pose = np.zeros((4,4),dtype = float)
-            R = Rotation.from_quat(frame['Q'][1:]+frame['Q'][0:1])
-            T = np.array(frame['T'])
-            pose[0:3,0:3] = R.as_matrix()
-            pose[0:3,3] = T
+            R = Rotation.from_quat(frame['Q'][1:]+frame['Q'][0:1]).as_matrix().astype(np.float32)
+            T = np.array(frame['T'],dtype=np.float32)
+            #convert the w2c to c2w
+
+            pose[0:3,0:3] = np.transpose(R)
+            pose[0:3,3] = np.matmul(-np.transpose(R),T)
             pose[3,3] = 1.
-            pose = pose.astype(np.float32)
             self.poses.append(pose)
 
             if "light_cond" in frame.keys():

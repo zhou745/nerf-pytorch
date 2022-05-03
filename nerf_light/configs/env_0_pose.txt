@@ -1,4 +1,5 @@
-expname = env_0_pose_half
+expname = env_0_pose_quat
+# expname = env_0_pose_debug
 
 basedir = ./logs
 
@@ -21,8 +22,8 @@ N_samples = 64
 N_importance = 128
 N_rand = 1024
 
-half_res = True
-quat_res = False
+half_res = False
+quat_res = True
 render_debug = False
 gt_light_rate = 1.1
 near = 2
