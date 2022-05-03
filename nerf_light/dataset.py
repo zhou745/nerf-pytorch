@@ -107,7 +107,7 @@ class Nerf_real_light_dataset(Dataset):
             self.imgs_name.append(fname)
             #get quatarion
             pose = np.zeros((4,4),dtype = float)
-            R = Rotation.from_quat(frame['Q'])
+            R = Rotation.from_quat(frame['Q'][1:]+frame['Q'][0:1])
             T = np.array(frame['T'])
             pose[0:3,0:3] = R.as_matrix()
             pose[0:3,3] = T
