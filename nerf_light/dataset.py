@@ -114,6 +114,7 @@ class Nerf_real_light_dataset(Dataset):
             pose[0:3,0:3] = np.transpose(R)
             pose[0:3,3] = np.matmul(-np.transpose(R),T)
             pose[3,3] = 1.
+            pose = pose.astype(np.float32)
             self.poses.append(pose)
 
             if "light_cond" in frame.keys():

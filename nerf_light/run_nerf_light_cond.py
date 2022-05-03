@@ -129,7 +129,7 @@ def render(H, W, K, chunk=1024 * 32, rays_o=None, rays_d=None, viewdirs=None, li
 
 
 def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=0, gt_imgs=None,ref_img=None, savedir=None,
-                gt_light_rate = -0.1, render_factor=0):
+                gt_light_rate = 1.1, render_factor=0):
     H, W, focal = hwf
     K_use = K
     if render_factor != 0:

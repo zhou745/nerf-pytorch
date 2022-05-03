@@ -1,5 +1,5 @@
 # expname = env_0_pose
-expname = env_0
+expname = env_0_true
 basedir = ./logs
 
 num_epoch = 2000
@@ -23,9 +23,9 @@ N_rand = 1024
 
 half_res = False
 quat_res = True
-render_debug = True
+render_debug = False
 gt_light_rate = 1.1
 near = 2
 far = 6
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
-ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"
