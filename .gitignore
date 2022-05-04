@@ -9,3 +9,4 @@ data/*
 logs/*
 nerf_light/logs/*
 .idea/*
+nerf_light/render/*
