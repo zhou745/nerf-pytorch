@@ -1,29 +1,29 @@
-expname = env_0_front_pose_range_2_22
+expname = env_0_front_pose_range_2_22_dist_list
 # expname = env_0_pose_debug
 
 basedir = ./logs
 
-num_epoch = 4000
-save_weights_freq_epoch = 10
-save_testset_freq_epoch = 50
+num_epoch = 10000
+save_weights_freq_epoch = 100
+save_testset_freq_epoch = 500
 precrop_epoch = 1
 precrop_frac = 0.5
 
 light_cond = 20
-datadir = ../data/nerf_real/env_0_front
+datadir = ../data/nerf_real/env_0_front_dist
 dataset_type = real_data
 maximum_pose = 1000
 
-batch_size = 2
+batch_size = 1
 # white_bkgd = True
 lrate_decay = 500
 
-N_samples = 64
+N_samples = 128
 N_importance = 128
 N_rand = 1024
 
-half_res = False
-quat_res = True
+half_res = True
+quat_res = False
 render_debug = False
 gt_light_rate = 1.1
 near = 2
