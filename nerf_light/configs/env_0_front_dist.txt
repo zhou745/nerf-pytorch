@@ -28,5 +28,6 @@ render_debug = False
 gt_light_rate = 1.1
 near = 2
 far = 22
+use_image_list = True
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"

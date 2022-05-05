@@ -595,6 +595,7 @@ def config_parser(default_conf="configs/lego.txt"):
                         help='frequency of using gt light')
 
     parser.add_argument("--render_debug", action='store_true')
+    parser.add_argument("--use_image_list", action='store_true')
     return parser
 
 
@@ -644,7 +645,8 @@ def train():
                                                    args.half_res,
                                                    args.quat_res,
                                                    split='train',
-                                                   light_cond_dim=args.light_cond)
+                                                   light_cond_dim=args.light_cond,
+                                                   use_image_list=args.use_image_list)
 
         dataset_val = Nerf_real_light_dataset(args.datadir,
                                                  args.half_res,
