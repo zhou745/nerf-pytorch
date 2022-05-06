@@ -219,3 +219,12 @@ class Nerf_pose(nn.Module):
         self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
         self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))
         self.pose_embeding_T.weight.data.copy_(torch.tensor(rotation_T))
+
+    def init_random_parameter(self, scale = 0.1, bias = 0.05):
+        shape_v = self.pose_embeding_v.weight.data.shape
+        shape_alpha = self.pose_embeding_alpha.weight.data.shape
+        shape_T = self.pose_embeding_T.weight.data.shape
+
+        self.pose_embeding_v.weight.data.copy_((torch.rand(shape_v)-bias)*scale)
+        self.pose_embeding_alpha.weight.data.copy_((torch.rand(shape_alpha)-bias)*scale)
+        self.pose_embeding_T.weight.data.copy_((torch.rand(shape_T)-bias)*scale)

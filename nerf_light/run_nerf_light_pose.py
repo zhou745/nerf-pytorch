@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from run_nerf_in_the_wild_helpers import *
 
-from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset
+from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset, Nerf_llff_dataset
 from model import Nerf_density, Nerf_color, Nerf_pose
 from torch.utils.tensorboard import SummaryWriter
 
@@ -205,7 +205,10 @@ def create_nerf(args):
     skips_color = [2]
 
     model_pose = Nerf_pose(maximum_pose=args.maximum_pose)
-    model_pose.init_parameter(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+    if args.dataset_type == "real_data":
+        model_pose.init_parameter(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+    else:
+        model_pose.init_random_parameter()
 
     model_density = Nerf_density(input_ch=input_ch_xyz,
                                  D=args.net_density_depth,
@@ -605,7 +608,9 @@ def train():
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
     # default_conf = "configs/env_0_front_pose.txt"
-    default_conf = "configs/env_0_front_dist.txt"
+    # default_conf = "configs/env_0_front_dist.txt"
+    default_conf = "configs/fern.txt"
+
     parser = config_parser(default_conf=default_conf)
 
     args = parser.parse_args()
@@ -665,6 +670,28 @@ def train():
         hwf = dataset_train.get_hwf()
         near = args.near
         far = args.far
+        print('NEAR FAR', near, far)
+
+    elif args.dataset_type == "llff_data":
+        dataset_train = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_val = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_test = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        hwf = dataset_train.get_hwf()
+        print('DEFINING BOUNDS')
+
+        bds = dataset_train.get_bds()
+        near = np.ndarray.min(bds) * .9
+        far = np.ndarray.max(bds) * 1.
+
         print('NEAR FAR', near, far)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
