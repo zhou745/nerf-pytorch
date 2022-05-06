@@ -119,7 +119,7 @@ def render(H, W, K, chunk=1024 * 32, rays_o=None, rays_d=None, viewdirs=None, li
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
 
-    k_extract = ['rgb_map', 'disp_map', 'acc_map']
+    k_extract = ['rgb_map', 'disp_map', 'acc_map', 'depth_map']
     ret_list = [all_ret[k] for k in k_extract]
     ret_dict = {k: all_ret[k] for k in all_ret if k not in k_extract}
     return ret_list + [ret_dict]
@@ -158,7 +158,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     rays_d_flat = rays_d.flatten(1, 2)
     viewdirs = rays_d_flat / rays_d_flat.norm(dim=-1, keepdim=True)
     ref_img_run = ref_img[...,:3]
-    rgb, disp, acc, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
+    rgb, disp, acc, depth, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
                                     viewdirs=viewdirs, light_cond=light_cond, ref_img= ref_img_run, device=light_cond.device,
                                     eval_model=True,gt_light_rate=gt_light_rate, **render_kwargs)
 
@@ -434,7 +434,7 @@ def render_rays(rays_o,
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
     if N_importance > 0:
-        rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
+        rgb_map_0, disp_map_0, acc_map_0, depth_map_0 = rgb_map, disp_map, acc_map, depth_map
 
         z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
         z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_importance, det=(perturb == 0.))
@@ -456,12 +456,13 @@ def render_rays(rays_o,
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
-    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
+    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map, 'depth_map': depth_map}
 
     if N_importance > 0:
         ret['rgb0'] = rgb_map_0
         ret['disp0'] = disp_map_0
         ret['acc0'] = acc_map_0
+        ret['depth0'] = depth_map_0
         ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [N_rays]
 
     for k in ret:
@@ -595,6 +596,7 @@ def config_parser(default_conf="configs/lego.txt"):
                         help='frequency of using gt light')
 
     parser.add_argument("--render_debug", action='store_true')
+    parser.add_argument("--use_image_list", action='store_true')
     return parser
 
 
@@ -603,7 +605,8 @@ def train():
     # default_conf = "configs/kubric_shoe.txt"
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
-    default_conf = "configs/env_0_pose.txt"
+    # default_conf = "configs/env_0_front_pose.txt"
+    default_conf = "configs/env_0_front_dist.txt"
     parser = config_parser(default_conf=default_conf)
 
     args = parser.parse_args()
@@ -643,7 +646,8 @@ def train():
                                                    args.half_res,
                                                    args.quat_res,
                                                    split='train',
-                                                   light_cond_dim=args.light_cond)
+                                                   light_cond_dim=args.light_cond,
+                                                   use_image_list=args.use_image_list)
 
         dataset_val = Nerf_real_light_dataset(args.datadir,
                                                  args.half_res,
@@ -807,13 +811,32 @@ def train():
                                    dim=0)  # (N_rand, 3)
 
             #####  Core optimization loop  #####
-            rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays_o=rays_o, rays_d=rays_d,
+            rgb, disp, acc, depth, extras = render(H, W, K, chunk=args.chunk, rays_o=rays_o, rays_d=rays_d,
                                             viewdirs=viewdirs, light_cond=light_cond,ref_img=ref_img, device=images.device,
                                             gt_light_rate = args.gt_light_rate, **render_kwargs_train)
+            ##### compute the depth from other views
+            xyz_querry = rays_o + rays_d*depth[...,None]
+            #### get a second view direction
+            #### trans of view point  # current disturbance is 1
+            delta = (torch.rand((rays_o.shape[0],3)).repeat(1,rays_o.shape[1],1)-0.5)
+            rays_o_2 = rays_o+delta
+            viewdirs_2 = xyz_querry-rays_o_2
+            viewdirs_2 = viewdirs_2/viewdirs_2.norm(dim=-1,keepdim=True)
+            #compute the center line
+            center_line = viewdirs_2.mean(dim=1).detach()
+            #scale all directions so that their length is one in the direction of center_line
+            rays_d_2 = viewdirs_2/(viewdirs_2*center_line[:,None,:]).sum(dim=-1,keepdim=True)
+            #recompute the depth
+            rgb_2, disp_2, acc_2, depth_2, extras_2 = render(H, W, K, chunk=args.chunk, rays_o=rays_o_2, rays_d=rays_d_2,
+                                                   viewdirs=viewdirs_2, light_cond=light_cond, ref_img=ref_img,
+                                                   device=images.device,
+                                                   gt_light_rate=args.gt_light_rate, **render_kwargs_train)
 
+            xyz_querry_2 = rays_o_2 + rays_d_2*depth_2[...,None]
             optimizer.zero_grad()
             img_loss = img2mse(rgb, target_s)
-            loss = img_loss
+            depth_loss = ((xyz_querry_2-xyz_querry.detach())**2).mean()+((xyz_querry-xyz_querry_2.detach())**2).mean()
+            loss = img_loss+depth_loss
             psnr = mse2psnr(img_loss)
 
             if 'rgb0' in extras:
@@ -840,10 +863,11 @@ def train():
             writer.add_scalar('PSNR', psnr.item(), global_step)
             writer.add_scalar('Loss_fine', img_loss.item(), global_step)
             writer.add_scalar('Loss_coarse', img_loss0.item(), global_step)
+            writer.add_scalar('Loss_depth', depth_loss.item(), global_step)
 
             if global_step % args.print_freq_step == 0:
                 tqdm.write(
-                    f"[TRAIN] Iter: {global_step} lr: {new_lrate} Loss: {loss.item()}  PSNR: {psnr.item()}, Loss_fine: {img_loss.item()}, Loss_coarse: {img_loss0.item()}")
+                    f"[TRAIN] Iter: {global_step} lr: {new_lrate} Loss: {loss.item()}  PSNR: {psnr.item()}, Loss_fine: {img_loss.item()}, Loss_coarse: {img_loss0.item()}, Loss_depth: {depth_loss.item()}")
             # print(f"Step: {global_step}, Loss: {loss}, Time: {dt}")
             #####           end            #####
 

@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from run_nerf_in_the_wild_helpers import *
 
-from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset
+from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset, Nerf_llff_dataset
 from model import Nerf_density, Nerf_color
 from torch.utils.tensorboard import SummaryWriter
 
@@ -606,7 +606,9 @@ def train():
     # default_conf = "configs/kubric_shoe.txt"
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
-    default_conf = "configs/env_0.txt"
+    # default_conf = "configs/env_0.txt"
+    default_conf = "configs/fern.txt"
+
     parser = config_parser(default_conf=default_conf)
 
     args = parser.parse_args()
@@ -665,6 +667,27 @@ def train():
         hwf = dataset_train.get_hwf()
         near = args.near
         far = args.far
+        print('NEAR FAR', near, far)
+    elif args.dataset_type == "llff_data":
+        dataset_train = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_val = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_test = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        hwf = dataset_train.get_hwf()
+        print('DEFINING BOUNDS')
+
+        bds = dataset_train.get_bds()
+        near = np.ndarray.min(bds) * .9
+        far = np.ndarray.max(bds) * 1.
+
         print('NEAR FAR', near, far)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
