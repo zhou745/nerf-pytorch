@@ -536,8 +536,8 @@ def config_parser(default_conf = "configs/lego.txt"):
 
 
 def train():
-    # default_conf = "configs/fern.txt"
-    default_conf = "configs/kubric_shoe.txt"
+    default_conf = "configs/fern.txt"
+    # default_conf = "configs/kubric_shoe.txt"
     N_iters = 1000000 + 1      #zhoujq modified
     parser = config_parser(default_conf = default_conf)
     args = parser.parse_args()

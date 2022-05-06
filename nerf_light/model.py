@@ -55,10 +55,10 @@ class Nerf_color(nn.Module):
                       input_ch_color = 256,
                       light_cond = 200,
                       light_dim = 63,
-                      D = 4,
-                      W = 512,
+                      D = 8,
+                      W = 256,
                       output_ch = 3,
-                      skips=[2]):
+                      skips=[4]):
 
         super(Nerf_color, self).__init__()
 
