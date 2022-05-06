@@ -19,7 +19,7 @@ gt_light_rate = 1.1
 
 raw_noise_std = 1e0
 
-batch_size = 1
+batch_size = 2
 # white_bkgd = True
 lrate_decay = 250
 

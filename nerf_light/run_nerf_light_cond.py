@@ -63,6 +63,10 @@ def run_network(xyz, dir, light_cond,
             'density': density}
 
 
+    # return {'color': color_encode,
+    #         'density': density}
+
+
 def batchify_rays(rays_o, rays_d, viewdirs, light_cond, chunk=1024 * 32, eval_model=False, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
@@ -205,12 +209,18 @@ def create_nerf(args):
 
     # get model for density and encoding
     skips_density = [4]
-    skips_color = [2]
+    skips_color = [4]
     model_density = Nerf_density(input_ch=input_ch_xyz,
                                  D=args.net_density_depth,
                                  W=args.net_density_width,
                                  skips=skips_density,
                                  output_ch_color=args.color_feature_dim)
+
+    # model_density = Nerf_density(input_ch=input_ch_xyz,
+    #                              D=args.net_density_depth,
+    #                              W=args.net_density_width,
+    #                              skips=skips_density,
+    #                              output_ch_color=3)
 
     model_color = Nerf_color(input_ch_dir=input_ch_dir,
                              input_ch_color=args.color_feature_dim,
@@ -220,6 +230,7 @@ def create_nerf(args):
                              W=args.net_color_width,
                              output_ch=3,
                              skips=skips_color)
+
 
     model_light = vit_toy_patch16_256(num_classes = args.light_cond)
 
@@ -786,7 +797,7 @@ def train():
 
             # break #debug use
             images = data_batch['images']
-            poses = data_batch['poses']
+            poses = data_batch['poses'][:, :3,:4]
             light_cond = data_batch['light_cond']
             ref_img = data_batch['ref_img']
 
