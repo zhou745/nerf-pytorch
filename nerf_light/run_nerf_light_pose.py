@@ -135,8 +135,8 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
         W = int(W * render_factor)
         if len(focal)==1:
             focal[0] = focal[0] * render_factor
-            K_use = np.array([[focal, 0, 0.5 * W],
-                              [0, focal, 0.5 * H],
+            K_use = np.array([[focal[0], 0, 0.5 * W],
+                              [0, focal[0], 0.5 * H],
                               [0, 0, 1]])
         else:
             focal[0] = focal[0] * render_factor
