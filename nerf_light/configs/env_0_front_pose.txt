@@ -1,11 +1,11 @@
-expname = env_0_front_pose_scaled
+expname = env_0_front_pose_scaled_debug
 # expname = env_0_pose_debug
 
 basedir = ./logs
 
-num_epoch = 40000
-save_weights_freq_epoch = 10
-save_testset_freq_epoch = 50
+num_epoch = 400000
+save_weights_freq_epoch = 10000
+save_testset_freq_epoch = 10000
 precrop_epoch = 1
 precrop_frac = 0.5
 
@@ -26,7 +26,12 @@ half_res = False
 quat_res = True
 render_debug = False
 gt_light_rate = 1.1
-near = 1.8
+near = 0.5
 far = 6.2
+
+train_image_list = "0"
+val_image_list = "5"
+test_image_list = "0"
+scale_pose = 5.
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"

@@ -87,13 +87,10 @@ class Nerf_blender_light_dataset(Dataset):
     def get_hwf(self):
         return([self.H,self.W,self.focal])
 
-default_image_list = ["r_0.png","r_5.png","r_10.png","r_15.png","r_20.png","r_25.png","r_30.png","r_35.png",
-                      "r_40.png","r_45.png","r_50.png","r_55.png","r_60.png","r_65.png","r_70.png","r_75.png",
-                      "r_80.png","r_85.png","r_90.png","r_95.png"]
 
 class Nerf_real_light_dataset(Dataset):
     def __init__(self, basedir, half_res=False,quat_res = False, split = 'Train',
-                 light_cond_dim=200,use_image_list = False, scale_pose = 3.0):
+                 light_cond_dim=200,image_list = "", scale_pose = 3.0):
         super(Nerf_real_light_dataset, self).__init__()
 
         self.split = split
@@ -107,8 +104,10 @@ class Nerf_real_light_dataset(Dataset):
         self.poses = []
         self.ref_imgs = []
 
+        image_list_ = [f"r_{item}.png" for item in image_list.split(" ")]
+
         for frame in meta['frames']:
-            if use_image_list and frame['file_path'] not in default_image_list:
+            if len(image_list_)>0 and frame['file_path'] not in image_list_:
                    continue
             fname = os.path.join(basedir, split+"/"+frame['file_path'])
             self.imgs_name.append(fname)

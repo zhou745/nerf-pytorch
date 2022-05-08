@@ -161,7 +161,7 @@ class Skew(nn.Module):
 
 #nerf pose net
 class Nerf_pose(nn.Module):
-    def __init__(self, maximum_pose = 1000):
+    def __init__(self, maximum_pose = 1000, share_camera = True):
         super(Nerf_pose, self).__init__()
         self.maximum_pose = maximum_pose
         #rotation axis
@@ -171,6 +171,12 @@ class Nerf_pose(nn.Module):
         #translation vactor
         self.pose_embeding_T = nn.Embedding(maximum_pose,3)
 
+        self.share_camera = share_camera
+        #camera
+        if share_camera:
+            self.camera = nn.Embedding(maximum_pose,4)
+        else:
+            self.camera = nn.Embedding(1, 4)
         self.skew = Skew()
 
     def forward(self, image_idx):
@@ -193,6 +199,9 @@ class Nerf_pose(nn.Module):
         K = torch.eye(4).to(rotation_v.device).unsqueeze(0).repeat(N,1,1)
         K[:,0:3,0:3] = rotation
         K[:,0:3,3] = translation
+
+        #create intrinsic matrix
+
         return(K)
 
     def init_parameter_from_q(self,data_json_path,is_w2c = True):
