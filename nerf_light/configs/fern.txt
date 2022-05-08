@@ -1,4 +1,4 @@
-expname = fern_test_new
+expname = fern_test_debug
 basedir = ./logs
 datadir = ../data/nerf_llff_data/fern
 dataset_type = llff_data
@@ -19,7 +19,7 @@ gt_light_rate = 1.1
 
 raw_noise_std = 1e0
 
-batch_size = 2
+batch_size = 1
 # white_bkgd = True
 lrate_decay = 250
-
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/render/fern_pose/017499.tar"

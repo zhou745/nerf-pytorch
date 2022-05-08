@@ -190,7 +190,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     return rgb, disp
 
 
-def create_nerf(args):
+def create_nerf(args,train_dataset = None):
     """Instantiate NeRF's MLP model.
     """
 
@@ -206,7 +206,9 @@ def create_nerf(args):
 
     model_pose = Nerf_pose(maximum_pose=args.maximum_pose)
     if args.dataset_type == "real_data":
-        model_pose.init_parameter(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+        model_pose.init_parameter_from_q(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+    elif train_dataset is not None:
+        model_pose.init_parameter_from_dataset(train_dataset)
     else:
         model_pose.init_random_parameter()
 
@@ -733,7 +735,7 @@ def train():
     # create the pytorch dataloader for loading images
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
+    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args,train_dataset=dataset_train)
     global_step = start
     epoch_step = start // (len(dataset_train) * args.batch_size)
 
@@ -776,7 +778,7 @@ def train():
         save_path = "./render/env_0_pose/epoch_323_train"
         # save_path = "./render/single_shoes/epoch_6000_test"
         render_dataset(save_path, hwf, K, args, dataset_train, render_kwargs_test, device,
-                       offset_idx=0,step_idx=50, num_render=16, light_cond_ratio=None,gt_light_rate=-0.1)
+                       offset_idx=0,step_idx=1, num_render=20, light_cond_ratio=None,gt_light_rate=-0.1)
         return
 
     # Summary writers
@@ -921,6 +923,9 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
     testsavedir = save_dir
     os.makedirs(testsavedir, exist_ok=True)
     print('test cases num ', num_render)
+    pose_colmap_list = []
+    pose_training_list = []
+
     with torch.no_grad():
         for img_idx in tqdm(range(num_render)):
             data_batch = dataset[img_idx*step_idx+offset_idx]
@@ -930,6 +935,8 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
             poses = render_kwargs_test['model_pose'](image_idx).detach()
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
             ref_img = data_batch['ref_img'].to(device).unsqueeze(0)
+            pose_colmap_list.append(poses_colmap[:,:,:-1].detach().cpu())
+            pose_training_list.append(poses[:,:-1,:].detach().cpu())
 
             light_idx = np.where(light_cond[0].cpu().numpy()>0.5)
             print(light_idx,flush=True)
@@ -937,9 +944,9 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
                 light_cond[0,light_idx[0][0]] = light_cond_ratio[0]
                 light_cond[0,light_idx[0][1]] = light_cond_ratio[1]
 
-            render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
-                        gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor,
-                        gt_light_rate= gt_light_rate)
+            # render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
+            #             gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor,
+            #             gt_light_rate= gt_light_rate)
     print('Saved test set')
 
 

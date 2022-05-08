@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import json
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 eps = 1e-8
 
@@ -190,13 +191,11 @@ class Nerf_pose(nn.Module):
         N, _, _ = rotation.shape
         #create K matrix
         K = torch.eye(4).to(rotation_v.device).unsqueeze(0).repeat(N,1,1)
-        K[:,0:3,0:3] = torch.transpose(rotation,1,2)
-        #convert the translation
-        translation_c2w = (torch.transpose(rotation,1,2)*translation[:,None,:]).sum(dim=-1)
-        K[:,0:3,3] = translation_c2w
+        K[:,0:3,0:3] = rotation
+        K[:,0:3,3] = translation
         return(K)
 
-    def init_parameter(self,data_json_path):
+    def init_parameter_from_q(self,data_json_path,is_w2c = True):
         #read the json file and get colmap generated pose
         fp = open(data_json_path)
         meta = json.load(fp)
@@ -209,12 +208,43 @@ class Nerf_pose(nn.Module):
         Q = [[1.,0.,0.,0.] for i in range(self.maximum_pose)]
         for frame in frames:
             idx = int(frame['file_path'].rstrip(".png").split("_")[-1])
-            Q[idx] = frame['Q']
-            rotation_T[idx] = frame['T']
-        Q_np = np.array(Q,dtype=np.float32)
-        rotation_T = np.array(rotation_T,dtype=np.float32)
+            if is_w2c:
+                Q[idx] = np.array(frame['Q'],dtype=np.float32)
+                Q[idx][1:] = -Q[idx][1:]
+                #rotation
+                tmp_R = Q[idx].tolist()
+                R = Rotation.from_quat(tmp_R[1:]+tmp_R[0:1]).as_matrix().astype(dtype=np.float32)
+                tmp_v = -np.matmul(R,np.array(frame['T'],dtype=np.float32))
+                rotation_T[idx] = tmp_v
+            else:
+                Q[idx] = np.array(frame['Q'], dtype=np.float32)
+                rotation_T[idx] = np.array(frame['T'], dtype=np.float32)
+
+        Q_np = np.stack(Q,axis=0)
+        rotation_T = np.stack(rotation_T,axis=0)
         rotation_alpha = 2*np.arccos(Q_np[:,0:1])
         rotation_v = Q_np[:,1:]/(np.linalg.norm(Q_np[:,1:],ord=2,axis=-1,keepdims=True)+eps)
+
+        self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
+        self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))
+        self.pose_embeding_T.weight.data.copy_(torch.tensor(rotation_T))
+
+    def init_parameter_from_dataset(self,dataset):
+        number_data = len(dataset)
+        rotation_T = [[0., 0., 0.] for i in range(self.maximum_pose)]
+        Q = [[1., 0., 0., 0.] for i in range(self.maximum_pose)]
+
+        for idx in range(number_data):
+            poses = dataset.poses[idx][0:3,0:4]
+            rotation_T[idx] = poses[0:3,3]
+            tmp_q = Rotation.from_matrix(poses[0:3,0:3]).as_quat().tolist()
+            Q[idx] = np.array(tmp_q[3:4]+tmp_q[0:3],dtype=np.float32)
+            # Q[idx] = np.array(tmp_q, dtype=np.float32)
+
+        Q_np = np.stack(Q, axis=0)
+        rotation_T = np.stack(rotation_T, axis=0)
+        rotation_alpha = 2 * np.arccos(Q_np[:, 0:1])
+        rotation_v = Q_np[:, 1:] / (np.linalg.norm(Q_np[:, 1:], ord=2, axis=-1, keepdims=True) + eps)
 
         self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
         self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))

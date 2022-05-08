@@ -1,4 +1,4 @@
-expname = env_0_front_pose_range_2_22
+expname = env_0_front_pose_debug
 # expname = env_0_pose_debug
 
 basedir = ./logs

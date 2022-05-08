@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from run_nerf_in_the_wild_helpers import *
 
-from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset
+from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset,Nerf_llff_dataset
 from model import Nerf_density, Nerf_color, Nerf_pose
 from torch.utils.tensorboard import SummaryWriter
 
@@ -135,8 +135,8 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
         W = int(W * render_factor)
         if len(focal)==1:
             focal[0] = focal[0] * render_factor
-            K_use = np.array([[focal, 0, 0.5 * W],
-                              [0, focal, 0.5 * H],
+            K_use = np.array([[focal[0], 0, 0.5 * W],
+                              [0, focal[0], 0.5 * H],
                               [0, 0, 1]])
         else:
             focal[0] = focal[0] * render_factor
@@ -190,7 +190,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     return rgb, disp
 
 
-def create_nerf(args):
+def create_nerf(args,train_dataset = None):
     """Instantiate NeRF's MLP model.
     """
 
@@ -205,7 +205,12 @@ def create_nerf(args):
     skips_color = [2]
 
     model_pose = Nerf_pose(maximum_pose=args.maximum_pose)
-    model_pose.init_parameter(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+    if args.dataset_type == "real_data":
+        model_pose.init_parameter_from_q(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
+    elif train_dataset is not None:
+        model_pose.init_parameter_from_dataset(train_dataset)
+    else:
+        model_pose.init_random_parameter()
 
     model_density = Nerf_density(input_ch=input_ch_xyz,
                                  D=args.net_density_depth,
@@ -606,7 +611,8 @@ def train():
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
     # default_conf = "configs/env_0_front_pose.txt"
-    default_conf = "configs/env_0_front_dist.txt"
+    # default_conf = "configs/env_0_front_dist.txt"
+    default_conf = "configs/fern.txt"
     parser = config_parser(default_conf=default_conf)
 
     args = parser.parse_args()
@@ -667,6 +673,28 @@ def train():
         near = args.near
         far = args.far
         print('NEAR FAR', near, far)
+
+    elif args.dataset_type == "llff_data":
+        dataset_train = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_val = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        dataset_test = Nerf_llff_dataset(args.datadir,
+                                          factor = args.factor,
+                                          light_cond_dim = args.light_cond)
+
+        hwf = dataset_train.get_hwf()
+        print('DEFINING BOUNDS')
+
+        bds = dataset_train.get_bds()
+        near = np.ndarray.min(bds) * .9
+        far = np.ndarray.max(bds) * 1.
+
+        print('NEAR FAR', near, far)
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
@@ -707,7 +735,7 @@ def train():
     # create the pytorch dataloader for loading images
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
+    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args,train_dataset=dataset_train)
     global_step = start
     epoch_step = start // (len(dataset_train) * args.batch_size)
 
@@ -835,7 +863,11 @@ def train():
             xyz_querry_2 = rays_o_2 + rays_d_2*depth_2[...,None]
             optimizer.zero_grad()
             img_loss = img2mse(rgb, target_s)
-            depth_loss = ((xyz_querry_2-xyz_querry.detach())**2).mean()+((xyz_querry-xyz_querry_2.detach())**2).mean()
+            weight = ((near+far)/(depth+depth_2+1))
+            weight = (weight**2).detach()
+
+            depth_loss = (weight*((xyz_querry_2-xyz_querry.detach())**2).sum(dim=-1)).mean()+\
+                         (weight*((xyz_querry-xyz_querry_2.detach())**2).sum(dim=-1)).mean()
             loss = img_loss+depth_loss
             psnr = mse2psnr(img_loss)
 
