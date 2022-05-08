@@ -92,7 +92,8 @@ default_image_list = ["r_0.png","r_5.png","r_10.png","r_15.png","r_20.png","r_25
                       "r_80.png","r_85.png","r_90.png","r_95.png"]
 
 class Nerf_real_light_dataset(Dataset):
-    def __init__(self, basedir, half_res=False,quat_res = False, split = 'Train',light_cond_dim=200,use_image_list = False):
+    def __init__(self, basedir, half_res=False,quat_res = False, split = 'Train',
+                 light_cond_dim=200,use_image_list = False, scale_pose = 3.0):
         super(Nerf_real_light_dataset, self).__init__()
 
         self.split = split
@@ -115,6 +116,8 @@ class Nerf_real_light_dataset(Dataset):
             pose = np.zeros((4,4),dtype = float)
             R = Rotation.from_quat(frame['Q'][1:]+frame['Q'][0:1]).as_matrix().astype(np.float32)
             T = np.array(frame['T'],dtype=np.float32)
+
+            T = T/scale_pose
             #convert the w2c to c2w
 
             pose[0:3,0:3] = np.transpose(R)
@@ -151,10 +154,10 @@ class Nerf_real_light_dataset(Dataset):
 
         self.half_res = half_res and not quat_res
         self.quat_res = quat_res
-        self.fx = K[0, 0]
-        self.fy = K[1, 1]
-        self.cx = K[0, 2]
-        self.cy = K[1, 2]
+        self.fx = K[0, 0]*scale_pose
+        self.fy = K[1, 1]*scale_pose
+        self.cx = K[0, 2]*scale_pose
+        self.cy = K[1, 2]*scale_pose
 
         if self.half_res:
             self.H = self.H // 2

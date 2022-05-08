@@ -1,9 +1,9 @@
-expname = env_0_front_pose_debug
+expname = env_0_front_pose_scaled
 # expname = env_0_pose_debug
 
 basedir = ./logs
 
-num_epoch = 4000
+num_epoch = 40000
 save_weights_freq_epoch = 10
 save_testset_freq_epoch = 50
 precrop_epoch = 1
@@ -14,9 +14,9 @@ datadir = ../data/nerf_real/env_0_front
 dataset_type = real_data
 maximum_pose = 1000
 
-batch_size = 2
+batch_size = 1
 # white_bkgd = True
-lrate_decay = 500
+lrate_decay = 250
 
 N_samples = 64
 N_importance = 128
@@ -26,7 +26,7 @@ half_res = False
 quat_res = True
 render_debug = False
 gt_light_rate = 1.1
-near = 2
-far = 22
+near = 1.8
+far = 6.2
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"
