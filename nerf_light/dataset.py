@@ -103,8 +103,10 @@ class Nerf_real_light_dataset(Dataset):
         self.light_cond = []
         self.poses = []
         self.ref_imgs = []
-
-        image_list_ = [f"r_{item}.png" for item in image_list.split(" ")]
+        if len(image_list)>0:
+            image_list_ = [f"r_{item}.png" for item in image_list.split(" ")]
+        else:
+            image_list_ = []
 
         for frame in meta['frames']:
             if len(image_list_)>0 and frame['file_path'] not in image_list_:

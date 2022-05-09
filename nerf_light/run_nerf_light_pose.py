@@ -612,9 +612,10 @@ def train():
     # default_conf = "configs/kubric_shoe.txt"
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
-    default_conf = "configs/env_0_front_pose.txt"
+    # default_conf = "configs/env_0_front_pose.txt"
     # default_conf = "configs/env_0_front_dist.txt"
     # default_conf = "configs/fern.txt"
+    default_conf = "configs/tree.txt"
 
     parser = config_parser(default_conf=default_conf)
 
