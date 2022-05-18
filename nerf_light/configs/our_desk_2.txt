@@ -1,0 +1,55 @@
+expname = our_desk_2_pose_correct
+
+basedir = ./logs
+
+num_epoch = 10000
+save_weights_freq_epoch = 10
+save_testset_freq_epoch = 25
+precrop_epoch = 1
+precrop_frac = 1.0
+
+light_cond = 10
+color_feature_dim = 256
+net_color_depth = 2
+net_color_width = 128
+light_dim = 1
+
+datadir = ../data/nerf_voxel/our_desk_2
+dataset_type = voxel_data
+maximum_pose = 1000
+
+batch_size = 1
+# white_bkgd = True
+lrate_decay = 200
+
+N_samples = 64
+N_importance = 128
+N_rand = 2048
+
+
+render_debug = False
+gt_light_rate = 1.1
+near = 0.8
+far = 24
+lrate = 1e-3
+
+train_image_list = "1:101:1"
+val_image_list = "1"
+test_image_list = "1 2 3 4 5"
+scale_pose = 16.
+scale_res = 1
+
+voxel_embeddim =24
+voxel_freqs=6
+max_voxels =5000000
+pcd_path ="../data/nerf_voxel/our_desk_2/pcd_from_mesh.ply"
+scene_center ="0.2,1.4,7.1"
+voxel_size = 0.3
+neighbor_marks = 3
+use_xyz_embed = True
+xyz_freqs = 10
+dir_freqs =4
+fix_pose = True
+
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"

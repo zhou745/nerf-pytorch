@@ -89,42 +89,60 @@ class Nerf_blender_light_dataset(Dataset):
 
 
 class Nerf_real_light_dataset(Dataset):
-    def __init__(self, basedir, half_res=False,quat_res = False, split = 'Train',
-                 light_cond_dim=200,image_list = "", scale_pose = 3.0):
+    def __init__(self, basedir, split = 'Train',scale_res = 1.,
+                 light_cond_dim=200,image_list = "", scale_pose = 3.0,scene_center = "0.,0.,0.",exclude_image_list = ""):
         super(Nerf_real_light_dataset, self).__init__()
 
         self.split = split
         self.light_cond_dim = light_cond_dim
         with open(os.path.join(basedir, 'transforms_{}.json'.format(self.split)), 'r') as fp:
             meta = json.load(fp)
-
+        self.pose_avg = np.concatenate(
+            [np.eye(3), np.array([float(it) for it in scene_center.split(",")])[:, None]], 1
+        )
 
         self.imgs_name = []
         self.light_cond = []
         self.poses = []
         self.ref_imgs = []
         if len(image_list)>0:
-            image_list_ = [f"r_{item}.png" for item in image_list.split(" ")]
+            if ":" not in image_list:
+                image_list_ = [f"r_{item}.png" for item in image_list.split(" ")]
+            else:
+                start, end, step = image_list.split(":")
+                image_list_ = [f"r_{item}.png" for item in range(int(start), int(end), int(step))]
         else:
             image_list_ = []
+        if len(exclude_image_list)>0:
+            exclude_list_ = [f"r_{item}.png" for item in exclude_image_list.split(" ")]
+        else:
+            exclude_list_ = []
 
         for frame in meta['frames']:
             if len(image_list_)>0 and frame['file_path'] not in image_list_:
                    continue
+            #exclude some val images
+            if self.split=="train" and frame['file_path'] in exclude_list_:
+                continue
+            #check pose
             fname = os.path.join(basedir, split+"/"+frame['file_path'])
-            self.imgs_name.append(fname)
             #get quatarion
             pose = np.zeros((4,4),dtype = float)
             R = Rotation.from_quat(frame['Q'][1:]+frame['Q'][0:1]).as_matrix().astype(np.float32)
             T = np.array(frame['T'],dtype=np.float32)
-
-            T = T/scale_pose
             #convert the w2c to c2w
 
             pose[0:3,0:3] = np.transpose(R)
             pose[0:3,3] = np.matmul(-np.transpose(R),T)
             pose[3,3] = 1.
+
+            fix_rot = np.array([1, 0, 0, 0, -1, 0, 0, 0, -1]).reshape(3, 3)
+            pose[:3, :3] = pose[:3, :3] @ fix_rot
+            # centralize and rescale
+            pose = center_pose_from_avg(self.pose_avg, pose)
+            pose[:3, 3] = pose[:3, 3]/scale_pose
             pose = pose.astype(np.float32)
+            self.imgs_name.append(fname)
             self.poses.append(pose)
 
             if "light_cond" in frame.keys():
@@ -153,28 +171,21 @@ class Nerf_real_light_dataset(Dataset):
         f_camera.close()
         K = np.array(camera_para['K'], dtype=np.float)
 
-        self.half_res = half_res and not quat_res
-        self.quat_res = quat_res
-        self.fx = K[0, 0]*scale_pose
-        self.fy = K[1, 1]*scale_pose
-        self.cx = K[0, 2]*scale_pose
-        self.cy = K[1, 2]*scale_pose
 
-        if self.half_res:
-            self.H = self.H // 2
-            self.W = self.W // 2
-            self.fx = K[0,0]/2
-            self.fy = K[1, 1]/2
-            self.cx = K[0,2]/2
-            self.cy = K[1, 2]/2
+        self.scale_res = scale_res
 
-        if self.quat_res:
-            self.H = self.H // 4
-            self.W = self.W // 4
-            self.fx = K[0,0]/4
-            self.fy = K[1, 1]/4
-            self.cx = K[0,2]/4
-            self.cy = K[1, 2]/4
+        self.H = self.H // self.scale_res
+        self.W = self.W // self.scale_res
+        self.fx = K[0,0]/self.scale_res
+        self.fy = K[1, 1]/self.scale_res
+        self.cx = K[0,2]/self.scale_res
+        self.cy = K[1, 2]/self.scale_res
+        border = 20//self.scale_res
+        self.bmask = np.ones((self.H, self.W))
+        self.bmask[:border, :] = 0
+        self.bmask[-border:, :] = 0
+        self.bmask[:, :border] = 0
+        self.bmask[:, -border:] = 0
 
     def __len__(self):
         return(len(self.imgs_name))
@@ -184,8 +195,8 @@ class Nerf_real_light_dataset(Dataset):
         img = (np.array(imageio.imread(self.imgs_name[idx]))/ 255.).astype(np.float32)
         image_idx = int(self.imgs_name[idx].rstrip(".png").split("_")[-1])
         #interpolate to size self.H self.W
-        if self.half_res or self.quat_res:
-           img = cv2.resize(img, (self.W, self.H), interpolation=cv2.INTER_AREA)
+
+        img = cv2.resize(img, (self.W, self.H), interpolation=cv2.INTER_AREA)
         light_cond_tensor = torch.zeros((self.light_cond_dim),dtype=torch.float32)
         for l_idx in self.light_cond[idx]:
             if l_idx>=0:
@@ -196,7 +207,8 @@ class Nerf_real_light_dataset(Dataset):
                      'poses': torch.tensor(self.poses[idx]),
                      'light_cond': light_cond_tensor,
                      'ref_img': torch.tensor(img_ref),
-                     'image_idx': torch.tensor(image_idx)}
+                     'image_idx': torch.tensor(image_idx),
+                     'valide_mask':torch.tensor(self.bmask,dtype=torch.bool)}
         return(data_dict)
 
     def get_hwf(self):
@@ -364,3 +376,122 @@ class Nerf_llff_dataset(Dataset):
 
     def get_hwf(self):
         return([self.H,self.W,self.focal])
+
+
+def center_pose_from_avg(pose_avg, pose):
+    pose_avg_homo = np.eye(4)
+    pose_avg_homo[
+        :3
+    ] = pose_avg  # convert to homogeneous coordinate for faster computation
+    # by simply adding 0, 0, 0, 1 as the last row
+    pose_homo = np.eye(4)
+    pose_homo[:3] = pose[:3]
+    pose_centered = np.linalg.inv(pose_avg_homo) @ pose_homo  # (4, 4)
+    # pose_centered = pose_centered[:, :3] # (N_images, 3, 4)
+    return pose_centered
+
+class Nerf_voxel_dataset(Dataset):
+    def __init__(self, basedir, scale_res = 2, split = 'Train',
+                 light_cond_dim=200,image_list = "", scale_pose = 3.0,scene_center="0.,0.,0."):
+        super(Nerf_voxel_dataset, self).__init__()
+
+        self.split = split
+        self.light_cond_dim = light_cond_dim
+        self.pose_avg = np.concatenate(
+            [np.eye(3), np.array([float(it) for it in scene_center.split(",")])[:, None]], 1
+        )
+        with open(os.path.join(basedir, 'transforms_{}.json'.format(self.split)), 'r') as fp:
+            meta = json.load(fp)
+
+
+        self.imgs_name = []
+        self.light_cond = []
+        self.poses = []
+
+        if len(image_list)>0:
+            if ":" not in image_list:
+                image_list_ = ["{:04d}".format(int(item)) for item in image_list.split(" ")]
+            else:
+                start, end, step = image_list.split(":")
+                image_list_ = ["{:04d}".format(item) for item in range(int(start),int(end),int(step))]
+        else:
+            image_list_ = []
+
+        for frame in meta['frames']:
+            if len(image_list_)>0 and frame['file_path'] not in image_list_:
+                   continue
+
+            #convert the pose where z goes to the opposite direction
+            pose = np.array(frame["transform_matrix"])
+            #ignore this sample due to numeric reason
+            if np.isnan(pose.sum()) or np.isinf(pose.sum()):
+                continue
+
+            fix_rot = np.array([1, 0, 0, 0, -1, 0, 0, 0, -1]).reshape(3, 3)
+            pose[:3, :3] = pose[:3, :3] @ fix_rot
+            # centralize and rescale
+            pose = center_pose_from_avg(self.pose_avg, pose)
+            pose[:3, 3] /= scale_pose
+            self.poses.append(pose.astype(np.float32))
+            fname = os.path.join(basedir, split+"/"+frame['file_path']+".png")
+            self.imgs_name.append(fname)
+            #get quatarion
+
+            if "light_cond" in frame.keys():
+                if isinstance(frame['light_cond'],int):
+                    self.light_cond.append(np.array([frame['light_cond']]).astype(np.long))
+                elif isinstance(frame['light_cond'],list):
+                    self.light_cond.append(np.array(frame['light_cond']).astype(np.long))
+                else:
+                    raise RuntimeError('unknown light cond type')
+            else:
+                self.light_cond.append(np.array([0]).astype(np.long))
+
+        imgs_tmp = np.array(imageio.imread(fname))
+        H, W = imgs_tmp.shape[:2]
+        self.H = H
+        self.W = W
+        #camera para meter
+        K = [0.5 * W / np.tan(0.5 * meta["camera_angle_x"])]
+
+        self.scale_res = scale_res
+        self.fx = K[0]/self.scale_res
+        self.fy = K[0]/self.scale_res
+        self.cx = (W/2)/self.scale_res
+        self.cy = (H/2)/self.scale_res
+        self.H = H//self.scale_res
+        self.W = W//self.scale_res
+        border = 20
+        self.bmask = np.ones((H, W))
+        self.bmask[:border, :] = 0
+        self.bmask[-border:, :] = 0
+        self.bmask[:, :border] = 0
+        self.bmask[:, -border:] = 0
+
+    def __len__(self):
+        return(len(self.imgs_name))
+
+    def __getitem__(self, idx):
+
+        img = (np.array(imageio.imread(self.imgs_name[idx]))/ 255.).astype(np.float32)
+        image_idx = idx
+        #interpolate to size self.H self.W
+        img = cv2.resize(img, (self.W, self.H), interpolation=cv2.INTER_AREA)
+        light_cond_tensor = torch.zeros((self.light_cond_dim),dtype=torch.float32)
+        for l_idx in self.light_cond[idx]:
+            if l_idx>=0:
+                light_cond_tensor[l_idx] = 1.
+
+        data_dict = {'images': torch.tensor(img),
+                     'poses': torch.tensor(self.poses[idx]),
+                     'light_cond': light_cond_tensor,
+                     'image_idx': torch.tensor(image_idx),
+                     'valide_mask': torch.tensor(self.bmask,dtype=torch.bool),
+                     'image_name': self.imgs_name[idx]}
+        return(data_dict)
+
+    def get_hwf(self):
+        return([self.H,self.W,self.fx,self.fy,self.cx,self.cy])
+
+
+

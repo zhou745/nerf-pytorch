@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from run_nerf_in_the_wild_helpers import *
 
-from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset, Nerf_llff_dataset,Nerf_voxel_dataset
+from dataset import Nerf_blender_light_dataset,Nerf_real_light_dataset, Nerf_llff_dataset
 from model import Nerf_density, Nerf_color, Nerf_pose
 from torch.utils.tensorboard import SummaryWriter
 
@@ -61,11 +61,9 @@ def run_network(xyz, dir, light_cond,
 
     return {'color': output_color_dict['color'],
             'density': density}
-    # return {'color': color_encode,
-    #         'density': density}
 
 
-def batchify_rays(rays_o, rays_d, viewdirs, light_cond, chunk=1024 * 32, eval_model=False,near=2.0,far=6.0, **kwargs):
+def batchify_rays(rays_o, rays_d, viewdirs, light_cond, chunk=1024 * 32, eval_model=False, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
@@ -80,8 +78,7 @@ def batchify_rays(rays_o, rays_d, viewdirs, light_cond, chunk=1024 * 32, eval_mo
 
     for i in range(0, N * num_sample, chunk):
         ret = render_rays(rays_o_flat[i:i + chunk], rays_d_flat[i:i + chunk],
-                          viewdirs_flat[i:i + chunk], light_cond_flat[i:i + chunk],near=near,far=far,
-                          eval_model=eval_model,**kwargs)
+                          viewdirs_flat[i:i + chunk], light_cond_flat[i:i + chunk], eval_model=eval_model, **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -91,7 +88,7 @@ def batchify_rays(rays_o, rays_d, viewdirs, light_cond, chunk=1024 * 32, eval_mo
     return all_ret
 
 
-def render(H, W, K, chunk=1024 * 32, rays_o=None, rays_d=None, viewdirs=None, light_cond=None, device=None,
+def render(H, W, K, chunk=1024 * 32, rays_o=None, rays_d=None, viewdirs=None, light_cond=None,ref_img =None, device=None,
            near=2.0, far=6.0, eval_model=False,gt_light_rate=0.2, **kwargs):
     """Render rays
     Args:
@@ -117,19 +114,19 @@ def render(H, W, K, chunk=1024 * 32, rays_o=None, rays_d=None, viewdirs=None, li
     # Render and reshape
     sh = rays_d.shape
     all_ret = batchify_rays(rays_o_cuda, rays_d_cuda, viewdirs_cuda, light_cond_cuda, chunk, eval_model=eval_model,
-                            near=near,far=far,**kwargs)
+                            **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
 
-    k_extract = ['rgb_map', 'disp_map', 'acc_map', 'depth_map']
+    k_extract = ['rgb_map', 'disp_map', 'acc_map']
     ret_list = [all_ret[k] for k in k_extract]
     ret_dict = {k: all_ret[k] for k in all_ret if k not in k_extract}
     return ret_list + [ret_dict]
 
 
-def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=0, gt_imgs=None, savedir=None,
-                gt_light_rate = -0.1, render_factor=0,near=2.0,far=6.0):
+def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=0, gt_imgs=None,ref_img=None, savedir=None,
+                gt_light_rate = -0.1, render_factor=0):
     H, W, focal = hwf
     K_use = K
     if render_factor != 0:
@@ -160,9 +157,9 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
     rays_o_flat = rays_o.flatten(1, 2)
     rays_d_flat = rays_d.flatten(1, 2)
     viewdirs = rays_d_flat / rays_d_flat.norm(dim=-1, keepdim=True)
-
-    rgb, disp, acc, depth, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
-                                    viewdirs=viewdirs, light_cond=light_cond, device=light_cond.device,
+    ref_img_run = ref_img[...,:3]
+    rgb, disp, acc, extras = render(H, W, K_use, chunk=chunk, rays_o=rays_o_flat, rays_d=rays_d_flat,
+                                    viewdirs=viewdirs, light_cond=light_cond, ref_img= ref_img_run, device=light_cond.device,
                                     eval_model=True,gt_light_rate=gt_light_rate, **render_kwargs)
 
     rgb_2d = rgb.reshape(H, W, -1)
@@ -184,6 +181,11 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
             gt8 = to8b(gt_cpu)
             filename_gt = os.path.join(savedir, '{:03d}_gt.png'.format(img_idx))
             imageio.imwrite(filename_gt, gt8)
+
+            ref_cpu = ref_img[0].cpu().numpy()
+            ref8 = to8b(ref_cpu)
+            filename_ref = os.path.join(savedir, '{:03d}_ref.png'.format(img_idx))
+            imageio.imwrite(filename_ref, ref8)
 
     return rgb, disp
 
@@ -209,6 +211,12 @@ def create_nerf(args,train_dataset = None):
         model_pose.init_parameter_from_dataset(train_dataset)
     else:
         model_pose.init_random_parameter()
+    #this model is used to model the camera distortion
+    model_dist = Nerf_density(input_ch=input_ch_xyz,
+                                 D=args.net_density_depth,
+                                 W=args.net_density_width,
+                                 skips=skips_density,
+                                 output_ch_color=args.color_feature_dim)
 
     model_density = Nerf_density(input_ch=input_ch_xyz,
                                  D=args.net_density_depth,
@@ -459,7 +467,7 @@ def render_rays(rays_o,
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
-    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map, 'depth_map': depth_map}
+    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
 
     if N_importance > 0:
         ret['rgb0'] = rgb_map_0
@@ -601,22 +609,7 @@ def config_parser(default_conf="configs/lego.txt"):
     parser.add_argument("--train_image_list", type=str,default="")
     parser.add_argument("--val_image_list", type=str, default="")
     parser.add_argument("--test_image_list", type=str, default="")
-    parser.add_argument("--exclude_image_list", type=str, default="")
     parser.add_argument("--scale_pose", type=float,default=1.0)
-    parser.add_argument("--fix_pose", action='store_true')
-    parser.add_argument("--scale_res", type=int, default=1)
-    #not used
-    parser.add_argument("--voxel_embeddim", type=int, default=24)
-    parser.add_argument("--voxel_freqs", type=int, default=6)
-    parser.add_argument("--max_voxels", type=int, default=800000)
-    parser.add_argument("--pcd_path", type=str, default="")
-    parser.add_argument("--scene_center", type=str, default="0.,0.,0.")
-    parser.add_argument("--voxel_size", type=float, default=0.3)
-    parser.add_argument("--neighbor_marks", type=int, default=3)
-    parser.add_argument("--use_xyz_embed",action='store_true')
-    parser.add_argument("--xyz_freqs", type=int, default=10)
-
-    parser.add_argument("--dir_freqs",type = int,default=4)
     return parser
 
 
@@ -625,12 +618,10 @@ def train():
     # default_conf = "configs/kubric_shoe.txt"
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
-    default_conf = "configs/env_0_pose.txt"
     # default_conf = "configs/env_0_front_pose.txt"
     # default_conf = "configs/env_0_front_dist.txt"
     # default_conf = "configs/fern.txt"
-    # default_conf = "configs/tree.txt"
-    # default_conf = "configs/our_desk_2.txt"
+    default_conf = "configs/tree.txt"
 
     parser = config_parser(default_conf=default_conf)
 
@@ -668,35 +659,31 @@ def train():
     elif  args.dataset_type == 'real_data':
         # image name list is loaded, instead of the image itself
         dataset_train = Nerf_real_light_dataset(args.datadir,
+                                                   args.half_res,
+                                                   args.quat_res,
                                                    split='train',
                                                    light_cond_dim=args.light_cond,
-                                                   image_list=args.train_image_list,
-                                                   scale_res = args.scale_res,
-                                                   scale_pose = args.scale_pose,
-                                                   scene_center = args.scene_center,
-                                                   exclude_image_list = args.exclude_image_list)
+                                                   image_list=args.train_image_list)
 
         dataset_val = Nerf_real_light_dataset(args.datadir,
-                                                 scale_res=args.scale_res,
-                                                 scale_pose=args.scale_pose,
+                                                 args.half_res,
+                                                 args.quat_res,
                                                  split='val',
                                                  light_cond_dim=args.light_cond,
-                                                 image_list=args.val_image_list,
-                                                 scene_center = args.scene_center)
+                                                 image_list=args.val_image_list)
 
         dataset_test = Nerf_real_light_dataset(args.datadir,
-                                                  scale_res=args.scale_res,
-                                                  scale_pose=args.scale_pose,
+                                                  args.half_res,
+                                                  args.quat_res,
                                                   split='test',
                                                   light_cond_dim=args.light_cond,
-                                                  image_list=args.test_image_list,
-                                                  scene_center = args.scene_center)
+                                                  image_list=args.test_image_list)
 
         print('Loaded nerf real dataset')
 
         hwf = dataset_train.get_hwf()
-        near = args.near / args.scale_pose
-        far = args.far / args.scale_pose
+        near = args.near
+        far = args.far
         print('NEAR FAR', near, far)
 
     elif args.dataset_type == "llff_data":
@@ -718,37 +705,6 @@ def train():
         bds = dataset_train.get_bds()
         near = np.ndarray.min(bds) * .9
         far = np.ndarray.max(bds) * 1.
-
-        print('NEAR FAR', near, far)
-    elif args.dataset_type=="voxel_data":
-        dataset_train = Nerf_voxel_dataset(args.datadir,
-                                           scale_res = args.scale_res,
-                                           scale_pose = args.scale_pose,
-                                           split= "train",
-                                           light_cond_dim = args.light_cond,
-                                           image_list = args.train_image_list,
-                                           scene_center=args.scene_center)
-
-        dataset_val = Nerf_voxel_dataset(args.datadir,
-                                         scale_res=args.scale_res,
-                                         scale_pose=args.scale_pose,
-                                         split="val",
-                                         light_cond_dim = args.light_cond,
-                                         image_list=args.val_image_list,
-                                         scene_center=args.scene_center)
-
-        dataset_test = Nerf_voxel_dataset(args.datadir,
-                                          scale_res=args.scale_res,
-                                          scale_pose=args.scale_pose,
-                                          split="test",
-                                          light_cond_dim = args.light_cond,
-                                          image_list=args.test_image_list,
-                                          scene_center=args.scene_center)
-
-        hwf = dataset_train.get_hwf()
-        print('DEFINING BOUNDS')
-        near = args.near/args.scale_pose
-        far = args.far/args.scale_pose
 
         print('NEAR FAR', near, far)
     else:
@@ -848,23 +804,19 @@ def train():
             images = data_batch['images']
             poses_ori = data_batch['poses']
             light_cond = data_batch['light_cond']
+            ref_img = data_batch['ref_img']
             image_idx = data_batch['image_idx']
-            if 'valide_mask' in data_batch.keys():
-                valide_mask = data_batch['valide_mask']
-            else:
-                valide_mask = torch.ones_like(images).to(dtype=torch.bool)
 
             if args.white_bkgd:
                 images = images[..., :3] * images[..., -1:] + (1. - images[..., -1:])
+                ref_img = ref_img[..., :3] * ref_img[..., -1:] + (1. - ref_img[..., -1:])
             else:
                 images = images[..., :3]
+                ref_img = ref_img[..., :3]
 
             #original pose
             N, _, _ = poses_ori.shape
-            if args.fix_pose:
-                poses = poses_ori
-            else:
-                poses = render_kwargs_train['model_pose'](image_idx)
+            poses = render_kwargs_train['model_pose'](image_idx)
 
             # sample rays for each image
             rays_o, rays_d = get_rays_batch(H, W, K, poses)
@@ -897,24 +849,21 @@ def train():
             viewdirs = rays_d / rays_d.norm(dim=-1, keepdim=True)
             target_s = torch.stack([images[i, select_coords[i, :, 0], select_coords[i, :, 1]] for i in range(N)],
                                    dim=0)  # (N_rand, 3)
-            valide_s = torch.stack([valide_mask[i, select_coords[i, :, 0], select_coords[i, :, 1]] for i in range(N)],
-                                   dim=0)
+
             #####  Core optimization loop  #####
-            rgb, disp, acc, depth, extras = render(H, W, K, chunk=args.chunk, rays_o=rays_o, rays_d=rays_d,
-                                            viewdirs=viewdirs, light_cond=light_cond, device=images.device,
+            rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays_o=rays_o, rays_d=rays_d,
+                                            viewdirs=viewdirs, light_cond=light_cond,ref_img=ref_img, device=images.device,
                                             gt_light_rate = args.gt_light_rate, **render_kwargs_train)
 
             optimizer.zero_grad()
-            img_loss = img2mse(rgb[valide_s], target_s[valide_s])
+            img_loss = img2mse(rgb, target_s)
             loss = img_loss
             psnr = mse2psnr(img_loss)
 
             if 'rgb0' in extras:
-                img_loss0 = img2mse(extras['rgb0'][valide_s], target_s[valide_s])
+                img_loss0 = img2mse(extras['rgb0'], target_s)
                 loss = loss + img_loss0
                 psnr0 = mse2psnr(img_loss0)
-            #get the opacity loss
-
 
             loss.backward()
             optimizer.step()
@@ -968,13 +917,14 @@ def train():
                     images = data_batch['images'].to(device)
                     image_idx = data_batch['image_idx'].to(device)
                     poses = data_batch['poses'].to(device)
-                    # poses_model = render_kwargs_test['model_pose'](image_idx).detach()
+                    poses_model = render_kwargs_test['model_pose'](image_idx).detach()
                     light_cond = data_batch['light_cond'].to(device)
+                    ref_img = data_batch['ref_img'].to(device)
 
-                    render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
-                                gt_imgs=images, savedir=testsavedir, render_factor=1.0)
-                    # render_path(poses_model, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx*2+1,
-                    #             gt_imgs=images, savedir=testsavedir, render_factor=1.0)
+                    render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx*2,
+                                gt_imgs=images,ref_img =ref_img, savedir=testsavedir, render_factor=1.0)
+                    render_path(poses_model, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx*2+1,
+                                gt_imgs=images,ref_img =ref_img, savedir=testsavedir, render_factor=1.0)
                     img_idx += 1
             print('Saved test set')
     writer.close()
@@ -989,13 +939,14 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
     pose_training_list = []
 
     with torch.no_grad():
-        for img_idx in tqdm(range(min(num_render,len(dataset)))):
+        for img_idx in tqdm(range(num_render)):
             data_batch = dataset[img_idx*step_idx+offset_idx]
             images = data_batch['images'].to(device).unsqueeze(0)
             image_idx = data_batch['image_idx'].to(device).unsqueeze(0)
             poses_colmap = data_batch['poses'].to(device).unsqueeze(0)
             poses = render_kwargs_test['model_pose'](image_idx).detach()
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
+            ref_img = data_batch['ref_img'].to(device).unsqueeze(0)
             pose_colmap_list.append(poses_colmap[:,:,:-1].detach().cpu())
             pose_training_list.append(poses[:,:-1,:].detach().cpu())
 
@@ -1005,9 +956,9 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
                 light_cond[0,light_idx[0][0]] = light_cond_ratio[0]
                 light_cond[0,light_idx[0][1]] = light_cond_ratio[1]
 
-            render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
-                        gt_imgs=images,savedir=testsavedir, render_factor=render_factor,
-                        gt_light_rate= gt_light_rate)
+            # render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
+            #             gt_imgs=images, ref_img = ref_img,savedir=testsavedir, render_factor=render_factor,
+            #             gt_light_rate= gt_light_rate)
     print('Saved test set')
 
 

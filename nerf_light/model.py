@@ -36,7 +36,7 @@ class Nerf_density(nn.Module):
         h = encode_xyz
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
-            h = F.relu(h)
+            h = F.leaky_relu(h)
             if i in self.skips:
                 h = torch.cat([encode_xyz, h], -1)
 
@@ -74,28 +74,33 @@ class Nerf_color(nn.Module):
         self.skips = skips
 
         self.input_ch_all = self.input_ch_dir + self.input_ch_color + self.light_dim
-
+        self.xyz_encoding_final = nn.Linear(self.input_ch_color, self.input_ch_color)
         self.encode_light = nn.Linear(self.light_cond,self.light_dim,bias=False)
-        self.pts_linears = nn.ModuleList(
-            [nn.Linear(self.input_ch_all, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + self.input_ch_all, W) for i in
-                                        range(D - 1)])
+        self.D = D
 
-        self.color_head = nn.Linear(W, self.output_ch)
+        if self.D>0:
+            self.pts_linears = nn.ModuleList(
+                [nn.Linear(self.input_ch_all, W)] + [nn.Linear(W, W) if i not in self.skips else nn.Linear(W + self.input_ch_all, W) for i in
+                                            range(D - 1)])
+            self.color_head = nn.Linear(W, self.output_ch)
+        else:
+            self.color_head = nn.Linear(self.input_ch_all, self.output_ch)
 
     def forward(self, input_dict):
 
         encode_color, encode_dir, encode_light = input_dict['encode_color'], input_dict['encode_dir'],input_dict['encode_light']
         #encode light first
         light_feature = self.encode_light(encode_light)
-
-        input_feature = torch.cat([encode_color,encode_dir,light_feature],dim=-1)
+        encode_color_ = self.xyz_encoding_final(encode_color)
+        input_feature = torch.cat([encode_color_,encode_dir,light_feature],dim=-1)
         # forward the backbone
         h = input_feature
-        for i, l in enumerate(self.pts_linears):
-            h = self.pts_linears[i](h)
-            h = F.relu(h)
-            if i in self.skips:
-                h = torch.cat([input_feature, h], -1)
+        if self.D>0:
+            for i, l in enumerate(self.pts_linears):
+                h = self.pts_linears[i](h)
+                h = F.leaky_relu(h)
+                if i in self.skips:
+                    h = torch.cat([input_feature, h], -1)
 
         #predict colors
         color = self.color_head(h)
@@ -132,7 +137,7 @@ class Nerf_light(nn.Module):
 
         for i, l in enumerate(self.pts_linears):
             h = self.conv_list[i](img_features)
-            h = F.relu(h)
+            h = F.leaky_relu(h)
             if i in self.skips:
                 h = torch.cat([img_features, h], -1)
 

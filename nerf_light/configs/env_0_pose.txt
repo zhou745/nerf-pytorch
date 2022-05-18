@@ -1,4 +1,4 @@
-expname = env_0_pose_range_2_22
+expname = env_0_pose_fix_pose_back_z
 # expname = env_0_pose_debug
 
 basedir = ./logs
@@ -10,23 +10,38 @@ precrop_epoch = 1
 precrop_frac = 0.5
 
 light_cond = 20
+color_feature_dim = 256
+net_color_depth = 2
+net_color_width = 128
+light_dim = 256
+
 datadir = ../data/nerf_real/env_0
 dataset_type = real_data
 maximum_pose = 1000
 
-batch_size = 2
+batch_size = 1
 # white_bkgd = True
-lrate_decay = 500
+lrate_decay = 200
 
 N_samples = 64
 N_importance = 128
-N_rand = 1024
+N_rand = 2048
 
-half_res = False
-quat_res = True
+scale_pose = 2.0
+scale_res = 4
 render_debug = False
+fix_pose = True
 gt_light_rate = 1.1
-near = 2
-far = 22
+
+scene_center = "-0.035,-0.18,2.2"
+gt_light_rate = 1.1
+near = 0.8
+far = 8
+
+train_image_list = "0:1000:1"
+val_image_list = "0 100 200 300 500 600 700 800 900"
+test_image_list = "0 100 200 300 500 600 700 800 900"
+exclude_image_list = "0 300 600 900"
+
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"

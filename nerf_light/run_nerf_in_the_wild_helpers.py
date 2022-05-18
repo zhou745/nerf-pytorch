@@ -184,16 +184,19 @@ def get_rays_batch(H, W, K, c2w):
 
 
     # Rotate ray directions from camera frame to the world frame
-    rays_d = torch.sum(dirs[..., np.newaxis,np.newaxis, :] * c2w[:,:3, :3],
-                       -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
-
-
+    # rays_d = torch.sum(dirs[..., np.newaxis,np.newaxis, :] * c2w[:,:3, :3],
+    #                    -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
+    rays_d_list = []
+    for idx in range(c2w.shape[0]):
+        rays_d_list.append(dirs@c2w[idx,:3,:3].T)
+    rays_d = torch.stack(rays_d_list,dim=0)
+    rays_d = rays_d/torch.norm(rays_d, dim=-1, keepdim=True)
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
     rays_o = c2w[:,:3, -1].expand(rays_d.shape)
 
     #reshape the batch dim to front
-    rays_d = rays_d.permute(2,0,1,3)
-    rays_o = rays_o.permute(2,0,1,3)
+    # rays_d = rays_d.permute(2,0,1,3)
+    # rays_o = rays_o.permute(2,0,1,3)
     return rays_o, rays_d
 
 def ndc_rays(H, W, focal, near, rays_o, rays_d):
