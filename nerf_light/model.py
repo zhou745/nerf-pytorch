@@ -178,7 +178,9 @@ class Nerf_pose(nn.Module):
 
 
         #camera
+        # used to be
         self.camera = nn.Embedding(1, 4)
+        # self.camera = nn.Embedding(maximum_pose, 4)
 
         self.skew = Skew()
 

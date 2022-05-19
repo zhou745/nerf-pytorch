@@ -1,4 +1,4 @@
-expname = env_0_pose_opt_pose_back_z
+expname = env_0_pose_opt_pose_back_z_debug
 # expname = env_0_pose_debug
 
 basedir = ./logs
@@ -29,9 +29,9 @@ N_rand = 2048
 
 scale_pose = 2.0
 scale_res = 4
-render_debug = False
+render_debug = True
 fix_pose = False
-fix_camera = False
+fix_camera = True
 gt_light_rate = 1.1
 
 scene_center = "-0.035,-0.18,2.2"
@@ -41,8 +41,9 @@ far = 8
 
 train_image_list = "0:1000:1"
 val_image_list = "0 100 200 300 500 600 700 800 900"
-test_image_list = "0 100 200 300 500 600 700 800 900"
+test_image_list = "0 300 600 900"
 exclude_image_list = "0 300 600 900"
 
 # ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose/000323.tar"
-# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0/001199.tar"
+# ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose_opt_pose_back_z/000071.tar"
+ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_pose_fix_pose_back_z/000291.tar"

@@ -612,8 +612,8 @@ def train():
     # default_conf = "configs/kubric_shoe.txt"
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
-    default_conf = "configs/env_0_pose.txt"
-    # default_conf = "configs/env_0_front_pose.txt"
+    # default_conf = "configs/env_0_pose.txt"
+    default_conf = "configs/env_0_front_pose.txt"
     # default_conf = "configs/env_0_front_dist.txt"
     # default_conf = "configs/fern.txt"
     # default_conf = "configs/tree.txt"
@@ -811,10 +811,13 @@ def train():
 
     # debug use
     if args.render_debug:
-        save_path = "./render/env_0_pose/epoch_323_train"
+        # save_path = "./render/env_0_pose_opt_pose_back_z/epoch_71_train"
+        save_path = "./render/env_0_front_pose_fix_pose_back_z/epoch_71_train"
         # save_path = "./render/single_shoes/epoch_6000_test"
-        render_dataset(save_path, hwf, K_ori, args, dataset_train, render_kwargs_test, device,
-                       offset_idx=0,step_idx=1, num_render=20, light_cond_ratio=None,gt_light_rate=-0.1)
+        # render_dataset(save_path, hwf, K_ori, args, dataset_train, render_kwargs_test, device,
+        #                offset_idx=0,step_idx=1, num_render=3, light_cond_ratio=None,gt_light_rate=-0.1)
+        render_dataset(save_path, hwf, K_ori, args, dataset_test, render_kwargs_test, device,
+                       offset_idx=0,step_idx=1, num_render=20, light_cond_ratio=None,gt_light_rate=1.1)
         return
 
     # Summary writers
@@ -961,37 +964,42 @@ def train():
     writer.close()
 
 
-def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, offset_idx=0, step_idx = 1,
+def render_dataset(save_dir, hwf, K_ori, args, dataset, render_kwargs_test, device, offset_idx=0, step_idx = 1,
                    num_render=10, render_factor=1.0, gt_light_rate = 1.1,light_cond_ratio=None):
     testsavedir = save_dir
     os.makedirs(testsavedir, exist_ok=True)
     print('test cases num ', num_render)
     pose_colmap_list = []
     pose_training_list = []
-
+    loss = 0.
     with torch.no_grad():
         for img_idx in tqdm(range(min(num_render,len(dataset)))):
             data_batch = dataset[img_idx*step_idx+offset_idx]
             images = data_batch['images'].to(device).unsqueeze(0)
             image_idx = data_batch['image_idx'].to(device).unsqueeze(0)
             poses_colmap = data_batch['poses'].to(device).unsqueeze(0)
-            poses, K = render_kwargs_test['model_pose'](image_idx).detach()
+            poses, K = render_kwargs_test['model_pose'](image_idx)
+            if args.fix_camera:
+                K = K_ori
+
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
-            # pose_colmap_list.append(poses_colmap[:,:,:-1].detach().cpu())
-            # pose_training_list.append(poses[:,:-1,:].detach().cpu())
+            if 'valide_mask' in data_batch.keys():
+                valide_mask = data_batch['valide_mask'].unsqueeze(0)
+            else:
+                valide_mask = torch.ones_like(images).to(dtype=torch.bool)
 
-            light_idx = np.where(light_cond[0].cpu().numpy()>0.5)
-            print(light_idx,flush=True)
-            if light_cond_ratio is not None:
-                light_cond[0,light_idx[0][0]] = light_cond_ratio[0]
-                light_cond[0,light_idx[0][1]] = light_cond_ratio[1]
-
-            render_path(poses_colmap, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx,
+            rgb, _ = render_path(poses_colmap, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx,
                         gt_imgs=images,savedir=testsavedir, render_factor=render_factor,
                         gt_light_rate= gt_light_rate)
             render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx+1,
                         gt_imgs=images,savedir=testsavedir, render_factor=render_factor,
                         gt_light_rate= gt_light_rate)
+            N,H,W,_ = images.shape
+            rgb = rgb.reshape(N,H,W,-1)
+            loss += img2mse(rgb[valide_mask], images[valide_mask])
+    loss = loss/min(num_render,len(dataset))
+    psnr = mse2psnr(loss)
+    print(f'final loss val loss is {loss.item()} psnr val is {psnr.item()}')
     print('Saved test set')
 
 
