@@ -154,7 +154,7 @@ def get_rays(H, W, K, c2w):
                           torch.linspace(0, H - 1, H))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
-    dirs = torch.stack([(i - K[0][2]) / K[0][0], -(j - K[1][2]) / K[1][1], -torch.ones_like(i)], -1)
+    dirs = torch.stack([(i - K[2]) / K[0], -(j - K[3]) / K[1], -torch.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     rays_d = torch.sum(dirs[..., np.newaxis, :] * c2w[:3, :3],
                        -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
@@ -165,7 +165,8 @@ def get_rays(H, W, K, c2w):
 
 def get_rays_np(H, W, K, c2w):
     i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
-    dirs = np.stack([(i - K[0][2]) / K[0][0], -(j - K[1][2]) / K[1][1], -np.ones_like(i)], -1)
+    dirs = torch.stack([(i - K[2]) / K[0], -(j - K[3]) / K[1], -torch.ones_like(i)], -1)
+    # dirs = np.stack([(i - K[0][2]) / K[0][0], -(j - K[1][2]) / K[1][1], -np.ones_like(i)], -1)
     # Rotate ray directions from camera frame to the world frame
     rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3, :3],
                     -1)  # dot product, equals to: [c2w.dot(dir) for dir in dirs]
@@ -180,8 +181,8 @@ def get_rays_batch(H, W, K, c2w):
                           torch.linspace(0, H - 1, H))  # pytorch's meshgrid has indexing='ij'
     i = i.t()
     j = j.t()
-    dirs = torch.stack([(i - K[0][2]) / K[0][0], -(j - K[1][2]) / K[1][1], -torch.ones_like(i)], -1)
-
+    # dirs = torch.stack([(i - K[0][2]) / K[0][0], -(j - K[1][2]) / K[1][1], -torch.ones_like(i)], -1)
+    dirs = torch.stack([(i - K[2]) / K[0], -(j - K[3]) / K[1], -torch.ones_like(i)], -1)
 
     # Rotate ray directions from camera frame to the world frame
     # rays_d = torch.sum(dirs[..., np.newaxis,np.newaxis, :] * c2w[:,:3, :3],

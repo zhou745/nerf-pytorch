@@ -166,7 +166,7 @@ class Skew(nn.Module):
 
 #nerf pose net
 class Nerf_pose(nn.Module):
-    def __init__(self, maximum_pose = 1000, share_camera = True):
+    def __init__(self, maximum_pose = 1000):
         super(Nerf_pose, self).__init__()
         self.maximum_pose = maximum_pose
         #rotation axis
@@ -176,12 +176,10 @@ class Nerf_pose(nn.Module):
         #translation vactor
         self.pose_embeding_T = nn.Embedding(maximum_pose,3)
 
-        self.share_camera = share_camera
+
         #camera
-        if share_camera:
-            self.camera = nn.Embedding(maximum_pose,4)
-        else:
-            self.camera = nn.Embedding(1, 4)
+        self.camera = nn.Embedding(1, 4)
+
         self.skew = Skew()
 
     def forward(self, image_idx):
@@ -207,41 +205,7 @@ class Nerf_pose(nn.Module):
 
         #create intrinsic matrix
 
-        return(K)
-
-    def init_parameter_from_q(self,data_json_path,is_w2c = True):
-        #read the json file and get colmap generated pose
-        fp = open(data_json_path)
-        meta = json.load(fp)
-        fp.close()
-
-
-        rotation_T = [[0.,0.,0.] for i in range(self.maximum_pose)]
-
-        frames = meta['frames']
-        Q = [[1.,0.,0.,0.] for i in range(self.maximum_pose)]
-        for frame in frames:
-            idx = int(frame['file_path'].rstrip(".png").split("_")[-1])
-            if is_w2c:
-                Q[idx] = np.array(frame['Q'],dtype=np.float32)
-                Q[idx][1:] = -Q[idx][1:]
-                #rotation
-                tmp_R = Q[idx].tolist()
-                R = Rotation.from_quat(tmp_R[1:]+tmp_R[0:1]).as_matrix().astype(dtype=np.float32)
-                tmp_v = -np.matmul(R,np.array(frame['T'],dtype=np.float32))
-                rotation_T[idx] = tmp_v
-            else:
-                Q[idx] = np.array(frame['Q'], dtype=np.float32)
-                rotation_T[idx] = np.array(frame['T'], dtype=np.float32)
-
-        Q_np = np.stack(Q,axis=0)
-        rotation_T = np.stack(rotation_T,axis=0)
-        rotation_alpha = 2*np.arccos(Q_np[:,0:1])
-        rotation_v = Q_np[:,1:]/(np.linalg.norm(Q_np[:,1:],ord=2,axis=-1,keepdims=True)+eps)
-
-        self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
-        self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))
-        self.pose_embeding_T.weight.data.copy_(torch.tensor(rotation_T))
+        return(K,self.camera(torch.tensor(0,dtype=torch.long).to(K.device)))
 
     def init_parameter_from_dataset(self,dataset):
         number_data = len(dataset)
@@ -249,10 +213,15 @@ class Nerf_pose(nn.Module):
         Q = [[1., 0., 0., 0.] for i in range(self.maximum_pose)]
 
         for idx in range(number_data):
+            try:
+                img_idx = int(dataset.imgs_name[idx].rstrip(".png").split("_")[-1])
+            except:
+                img_idx = idx
+
             poses = dataset.poses[idx][0:3,0:4]
-            rotation_T[idx] = poses[0:3,3]
+            rotation_T[img_idx] = poses[0:3,3]
             tmp_q = Rotation.from_matrix(poses[0:3,0:3]).as_quat().tolist()
-            Q[idx] = np.array(tmp_q[3:4]+tmp_q[0:3],dtype=np.float32)
+            Q[img_idx] = np.array(tmp_q[3:4]+tmp_q[0:3],dtype=np.float32)
             # Q[idx] = np.array(tmp_q, dtype=np.float32)
 
         Q_np = np.stack(Q, axis=0)
@@ -263,6 +232,20 @@ class Nerf_pose(nn.Module):
         self.pose_embeding_v.weight.data.copy_(torch.tensor(rotation_v))
         self.pose_embeding_alpha.weight.data.copy_(torch.tensor(rotation_alpha))
         self.pose_embeding_T.weight.data.copy_(torch.tensor(rotation_T))
+
+        # Cast intrinsics to right types
+        hwf = dataset.get_hwf()
+        H, W = hwf[0:2]
+        focal = hwf[2:]
+        H, W = int(H), int(W)
+        hwf = [H, W, focal]
+
+        if len(focal) == 1:
+            self.camera.weight.data.copy_(torch.tenosr([focal[0],focal[0],0.5 * W,0.5 * H],dtype=torch.float32))
+        elif len(focal) == 4:
+            self.camera.weight.data.copy_(torch.tensor([focal[0],focal[1],focal[2],focal[3]],dtype=torch.float32))
+        else:
+            raise RuntimeError("unknown camera type")
 
     def init_random_parameter(self, scale = 0.1, bias = 0.05):
         shape_v = self.pose_embeding_v.weight.data.shape

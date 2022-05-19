@@ -136,19 +136,7 @@ def render_path(render_poses, light_cond, hwf, K, chunk, render_kwargs, img_idx=
         # Render downsampled for speed
         H = int(H * render_factor)
         W = int(W * render_factor)
-        if len(focal)==1:
-            focal[0] = focal[0] * render_factor
-            K_use = np.array([[focal[0], 0, 0.5 * W],
-                              [0, focal[0], 0.5 * H],
-                              [0, 0, 1]])
-        else:
-            focal[0] = focal[0] * render_factor
-            focal[1] = focal[1] * render_factor
-            focal[2] = focal[2] * render_factor
-            focal[3] = focal[3] * render_factor
-            K_use = np.array([[focal[0], 0, focal[2]],
-                              [0, focal[1], focal[3]],
-                              [0, 0, 1]])
+        K_use = K*render_factor
 
     # render the rays
     rays_o, rays_d = get_rays(H, W, K_use, render_poses[0, :3, :4])
@@ -203,9 +191,7 @@ def create_nerf(args,train_dataset = None):
     skips_color = [2]
 
     model_pose = Nerf_pose(maximum_pose=args.maximum_pose)
-    if args.dataset_type == "real_data":
-        model_pose.init_parameter_from_q(data_json_path=os.path.join(args.datadir, 'transforms_train.json'))
-    elif train_dataset is not None:
+    if args.dataset_type == "real_data" or args.dataset_type == "llff_data":
         model_pose.init_parameter_from_dataset(train_dataset)
     else:
         model_pose.init_random_parameter()
@@ -603,8 +589,9 @@ def config_parser(default_conf="configs/lego.txt"):
     parser.add_argument("--test_image_list", type=str, default="")
     parser.add_argument("--exclude_image_list", type=str, default="")
     parser.add_argument("--scale_pose", type=float,default=1.0)
-    parser.add_argument("--fix_pose", action='store_true')
     parser.add_argument("--scale_res", type=int, default=1)
+    parser.add_argument("--fix_pose", action='store_true')
+    parser.add_argument("--fix_camera", action='store_true')
     #not used
     parser.add_argument("--voxel_embeddim", type=int, default=24)
     parser.add_argument("--voxel_freqs", type=int, default=6)
@@ -638,7 +625,7 @@ def train():
     num_epoch = args.num_epoch
     print(f"training for {args.num_epoch} epochs")
     # Load data
-    K = None
+    K_ori = None
     # currently only synthetic data is considered
     # kubric synthetic：blender_light
     # create dataset
@@ -761,18 +748,11 @@ def train():
     H, W = int(H), int(W)
     hwf = [H, W, focal]
 
-    if K is None and len(focal) ==1:
-        K = np.array([
-            [focal[0], 0, 0.5 * W],
-            [0, focal[0], 0.5 * H],
-            [0, 0, 1]
-        ])
-    elif K is None and len(focal) ==4:
-        K = np.array([
-            [focal[0], 0, focal[2]],
-            [0, focal[1], focal[3]],
-            [0, 0, 1]
-        ])
+    if K_ori is None and len(focal) ==1:
+        K_ori = torch.tensor([focal[0],focal[0],0.5 * W, 0.5 * H],dtype=torch.float32)
+    elif K_ori is None and len(focal) ==4:
+        K_ori = torch.tensor([focal[0], focal[1], focal[2], focal[3]], dtype=torch.float32)
+
 
     # Create log dir and copy the config file
     basedir = args.basedir
@@ -833,7 +813,7 @@ def train():
     if args.render_debug:
         save_path = "./render/env_0_pose/epoch_323_train"
         # save_path = "./render/single_shoes/epoch_6000_test"
-        render_dataset(save_path, hwf, K, args, dataset_train, render_kwargs_test, device,
+        render_dataset(save_path, hwf, K_ori, args, dataset_train, render_kwargs_test, device,
                        offset_idx=0,step_idx=1, num_render=20, light_cond_ratio=None,gt_light_rate=-0.1)
         return
 
@@ -862,9 +842,9 @@ def train():
             #original pose
             N, _, _ = poses_ori.shape
             if args.fix_pose:
-                poses = poses_ori
+                poses, K = poses_ori, K_ori
             else:
-                poses = render_kwargs_train['model_pose'](image_idx)
+                poses, K = render_kwargs_train['model_pose'](image_idx)
 
             # sample rays for each image
             rays_o, rays_d = get_rays_batch(H, W, K, poses)
@@ -967,14 +947,15 @@ def train():
                 for data_batch in tqdm(dataloader_test):
                     images = data_batch['images'].to(device)
                     image_idx = data_batch['image_idx'].to(device)
-                    poses = data_batch['poses'].to(device)
-                    # poses_model = render_kwargs_test['model_pose'](image_idx).detach()
+                    poses_ori = data_batch['poses'].to(device)
                     light_cond = data_batch['light_cond'].to(device)
 
-                    render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
+                    poses, K = render_kwargs_train['model_pose'](image_idx)
+
+                    render_path(poses_ori, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx,
                                 gt_imgs=images, savedir=testsavedir, render_factor=1.0)
-                    # render_path(poses_model, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx*2+1,
-                    #             gt_imgs=images, savedir=testsavedir, render_factor=1.0)
+                    render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx*2+1,
+                                gt_imgs=images, savedir=testsavedir, render_factor=1.0)
                     img_idx += 1
             print('Saved test set')
     writer.close()
@@ -994,10 +975,10 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
             images = data_batch['images'].to(device).unsqueeze(0)
             image_idx = data_batch['image_idx'].to(device).unsqueeze(0)
             poses_colmap = data_batch['poses'].to(device).unsqueeze(0)
-            poses = render_kwargs_test['model_pose'](image_idx).detach()
+            poses, K = render_kwargs_test['model_pose'](image_idx).detach()
             light_cond = data_batch['light_cond'].to(device).unsqueeze(0)
-            pose_colmap_list.append(poses_colmap[:,:,:-1].detach().cpu())
-            pose_training_list.append(poses[:,:-1,:].detach().cpu())
+            # pose_colmap_list.append(poses_colmap[:,:,:-1].detach().cpu())
+            # pose_training_list.append(poses[:,:-1,:].detach().cpu())
 
             light_idx = np.where(light_cond[0].cpu().numpy()>0.5)
             print(light_idx,flush=True)
@@ -1005,7 +986,10 @@ def render_dataset(save_dir, hwf, K, args, dataset, render_kwargs_test, device, 
                 light_cond[0,light_idx[0][0]] = light_cond_ratio[0]
                 light_cond[0,light_idx[0][1]] = light_cond_ratio[1]
 
-            render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=img_idx,
+            render_path(poses_colmap, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx,
+                        gt_imgs=images,savedir=testsavedir, render_factor=render_factor,
+                        gt_light_rate= gt_light_rate)
+            render_path(poses, light_cond, hwf, K, args.chunk, render_kwargs_test, img_idx=2*img_idx+1,
                         gt_imgs=images,savedir=testsavedir, render_factor=render_factor,
                         gt_light_rate= gt_light_rate)
     print('Saved test set')
