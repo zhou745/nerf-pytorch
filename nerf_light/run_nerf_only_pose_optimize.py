@@ -191,11 +191,11 @@ def create_nerf(args,train_dataset = None):
     skips_color = [2]
 
     model_pose = Nerf_pose(maximum_pose=args.maximum_pose)
-    if (args.dataset_type == "real_data" or args.dataset_type == "llff_data") and args.random_init==False:
+    if args.dataset_type == "real_data" or args.dataset_type == "llff_data":
         model_pose.init_parameter_from_dataset(train_dataset)
     else:
-        # model_pose.init_random_parameter()
-        model_pose.init_same_dir_parameter(train_dataset)
+        model_pose.init_random_parameter()
+
     model_density = Nerf_density(input_ch=input_ch_xyz,
                                  D=args.net_density_depth,
                                  W=args.net_density_width,
@@ -211,8 +211,9 @@ def create_nerf(args,train_dataset = None):
                              output_ch=3,
                              skips=skips_color)
     grad_vars = list(model_pose.parameters())
-    grad_vars += list(model_density.parameters())
-    grad_vars += list(model_color.parameters())
+    # other part of the model is not optimized
+    # grad_vars += list(model_density.parameters())
+    # grad_vars += list(model_color.parameters())
 
     model_density_fine = None
     model_color_fine = None
@@ -233,8 +234,8 @@ def create_nerf(args,train_dataset = None):
                                       output_ch=3,
                                       skips=skips_color)
 
-        grad_vars += list(model_density_fine.parameters())
-        grad_vars += list(model_color_fine.parameters())
+        # grad_vars += list(model_density_fine.parameters())
+        # grad_vars += list(model_color_fine.parameters())
 
     # query function for color and density
     network_query_fn = lambda xyz, dir, light_cond,density_fn, color_fn: run_network(xyz, dir, light_cond,
@@ -264,12 +265,13 @@ def create_nerf(args,train_dataset = None):
         ckpt_path = ckpts[-1]
         print('Reloading from', ckpt_path)
         ckpt = torch.load(ckpt_path)
-
-        start = ckpt['global_step']
-        optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+        #optimizer should not be loaded
+        # start = ckpt['global_step']
+        # optimizer.load_state_dict(ckpt['optimizer_state_dict'])
 
         # Load model
-        model_pose.load_state_dict(ckpt['model_pose'])
+        # pose is not loaded
+        # model_pose.load_state_dict(ckpt['model_pose'])
         model_density.load_state_dict(ckpt['model_density'])
         model_color.load_state_dict(ckpt['model_color'])
 
@@ -573,7 +575,7 @@ def config_parser(default_conf="configs/lego.txt"):
                         help='will take every 1/N images as LLFF test set, paper uses 8')
 
     # logging/saving options
-    parser.add_argument("--print_freq_step", type=int, default=100,
+    parser.add_argument("--print_freq_step", type=int, default=10,
                         help='frequency of console printout and metric loggin')
     parser.add_argument("--save_weights_freq_epoch", type=int, default=1,
                         help='frequency of weight ckpt saving')
@@ -592,7 +594,6 @@ def config_parser(default_conf="configs/lego.txt"):
     parser.add_argument("--scale_res", type=int, default=1)
     parser.add_argument("--fix_pose", action='store_true')
     parser.add_argument("--fix_camera", action='store_true')
-    parser.add_argument("--random_init", action='store_true')
     #not used
     parser.add_argument("--voxel_embeddim", type=int, default=24)
     parser.add_argument("--voxel_freqs", type=int, default=6)
@@ -614,7 +615,8 @@ def train():
     # default_conf = "configs/light_cond_shoes.txt"
     # default_conf = "configs/single_shoes.txt"
     # default_conf = "configs/env_0_pose.txt"
-    default_conf = "configs/env_0_front_pose.txt"
+    # default_conf = "configs/env_0_front_pose.txt"
+    default_conf = "configs/env_0_front_pose_only.txt"
     # default_conf = "configs/env_0_front_dist.txt"
     # default_conf = "configs/fern.txt"
     # default_conf = "configs/tree.txt"
@@ -813,7 +815,7 @@ def train():
     # debug use
     if args.render_debug:
         # save_path = "./render/env_0_pose_opt_pose_back_z/epoch_71_train"
-        save_path = f"./render/{args.expname}/epoch_0_test"
+        save_path = f"./render/{args.expname}/epoch_0_train"
         # save_path = "./render/single_shoes/epoch_6000_test"
         # render_dataset(save_path, hwf, K_ori, args, dataset_train, render_kwargs_test, device,
         #                offset_idx=0,step_idx=1, num_render=3, light_cond_ratio=None,gt_light_rate=-0.1)
@@ -826,7 +828,7 @@ def train():
     epoch_start = epoch_step
     for i in range(epoch_start, num_epoch):
         # time0 = time.time()
-        for data_batch in tqdm(dataloader_train):
+        for data_batch in dataloader_train:
 
             # break #debug use
             images = data_batch['images']
@@ -888,7 +890,13 @@ def train():
                                             viewdirs=viewdirs, light_cond=light_cond, device=images.device,
                                             gt_light_rate = args.gt_light_rate, **render_kwargs_train)
 
-            optimizer.zero_grad()
+            #zero grad for all parameters
+            #optimizer.zero_grad()
+            render_kwargs_train['model_pose'].zero_grad()
+            render_kwargs_train['model_density'].zero_grad()
+            render_kwargs_train['model_color'].zero_grad()
+            render_kwargs_train['model_density_fine'].zero_grad()
+            render_kwargs_train['model_color_fine'].zero_grad()
             img_loss = img2mse(rgb[valide_s], target_s[valide_s])
             loss = img_loss
             psnr = mse2psnr(img_loss)
@@ -901,6 +909,8 @@ def train():
 
 
             loss.backward()
+            #camera should not be optimized
+            render_kwargs_train['model_pose'].camera.zero_grad()
             optimizer.step()
 
             # NOTE: IMPORTANT!

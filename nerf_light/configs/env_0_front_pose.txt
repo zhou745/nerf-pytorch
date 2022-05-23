@@ -1,11 +1,11 @@
-expname = env_0_front_pose_opt_pose_back_z
+expname = env_0_front_pose_opt_pose_back_z_random_init
 # expname = env_0_pose_debug
 
 basedir = ./logs
 
 num_epoch = 100000
-save_weights_freq_epoch = 1000
-save_testset_freq_epoch = 1000
+save_weights_freq_epoch = 100
+save_testset_freq_epoch = 100
 precrop_epoch = 1
 precrop_frac = 0.5
 
@@ -33,6 +33,7 @@ scale_res = 4
 render_debug = False
 fix_pose = False
 fix_camera = False
+random_init = True
 gt_light_rate = 1.1
 near = 0.8
 far = 24.0

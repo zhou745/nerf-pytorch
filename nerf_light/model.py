@@ -257,3 +257,37 @@ class Nerf_pose(nn.Module):
         self.pose_embeding_v.weight.data.copy_((torch.rand(shape_v)-bias)*scale)
         self.pose_embeding_alpha.weight.data.copy_((torch.rand(shape_alpha)-bias)*scale)
         self.pose_embeding_T.weight.data.copy_((torch.rand(shape_T)-bias)*scale)
+
+    def init_same_dir_parameter(self,dataset):
+        shape_v = self.pose_embeding_v.weight.data.shape
+        shape_alpha = self.pose_embeding_alpha.weight.data.shape
+        shape_T = self.pose_embeding_T.weight.data.shape
+        #create the init tensor
+        rotation = np.array([[1.,0.,0.],
+                                 [0.,-1.,0.],
+                                 [0.,0.,-1.],],dtype=np.float32)
+        rotation_T = np.array([0.,0.,-2.5],dtype=np.float32)
+        tmp_q = Rotation.from_matrix(rotation).as_quat().tolist()
+        rotation_alpha = 2 * np.arccos(tmp_q[3:4])
+        rotaion_q = np.array(tmp_q[0:3],dtype=np.float32)
+
+        rotation_T_torch = torch.tensor(rotation_T).view(1,-1).repeat(self.maximum_pose,1)
+        rotation_alpha_torch = torch.tensor(rotation_alpha).view(1,-1).repeat(self.maximum_pose,1)
+        rotaion_q_torch = torch.tensor(rotaion_q).view(1,-1).repeat(self.maximum_pose,1)
+
+        self.pose_embeding_v.weight.data.copy_(rotaion_q_torch)
+        self.pose_embeding_alpha.weight.data.copy_(rotation_alpha_torch)
+        self.pose_embeding_T.weight.data.copy_(rotation_T_torch)
+
+        hwf = dataset.get_hwf()
+        H, W = hwf[0:2]
+        focal = hwf[2:]
+        H, W = int(H), int(W)
+        hwf = [H, W, focal]
+
+        if len(focal) == 1:
+            self.camera.weight.data.copy_(torch.tenosr([focal[0],focal[0],0.5 * W,0.5 * H],dtype=torch.float32))
+        elif len(focal) == 4:
+            self.camera.weight.data.copy_(torch.tensor([focal[0],focal[1],focal[2],focal[3]],dtype=torch.float32))
+        else:
+            raise RuntimeError("unknown camera type")

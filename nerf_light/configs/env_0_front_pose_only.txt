@@ -1,0 +1,50 @@
+expname = env_0_front_pose_only_pose_back_z_train
+# expname = env_0_pose_debug
+
+basedir = ./logs
+
+num_epoch = 10000
+save_weights_freq_epoch = 333
+save_testset_freq_epoch = 333
+precrop_epoch = 1
+precrop_frac = 0.5
+
+
+light_cond = 20
+color_feature_dim = 256
+net_color_depth = 2
+net_color_width = 128
+light_dim = 1
+
+datadir = ../data/nerf_real/env_0_front
+dataset_type = real_data
+maximum_pose = 100
+
+batch_size = 1
+# white_bkgd = True
+lrate_decay = 200
+
+N_samples = 64
+N_importance = 128
+N_rand = 2048
+
+scale_pose = 4.0
+scale_res = 4
+render_debug = True
+fix_pose = False
+fix_camera = False
+gt_light_rate = 1.1
+near = 0.8
+far = 24.0
+scene_center = "1.2,-0.1,9.7"
+
+# train_image_list = "0 30 60"
+# val_image_list = "0 30 60"
+# test_image_list = "0 30 60"
+train_image_list = "10 20 40 50"
+val_image_list = "10 20 40 50"
+test_image_list = "10 20 40 50"
+exclude_image_list = ""
+
+
+ft_path = "/home/jqzhou/Desktop/Work/nerf-pytorch/nerf_light/logs/env_0_front_pose_fix_pose_back_z/002909.tar"
